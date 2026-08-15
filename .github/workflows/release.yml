@@ -1,0 +1,123 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Adrian Chrysanthou
+
+name: Release the desktop app
+
+# Tag-driven: `git tag v0.2.0 && git push --tags` builds the bundles and opens a draft
+# release with them attached. The tag is the trigger and the version, so nothing has to be
+# typed into a form.
+on:
+  push:
+    tags: ['v*']
+  # Lets you rehearse the whole thing without tagging. It builds and attaches to a draft
+  # named after the run, which you then delete.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Typecheck and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test
+
+  bundle:
+    name: Bundle ${{ matrix.label }}
+    needs: check
+    permissions:
+      contents: write
+
+    strategy:
+      # One platform failing should not throw away the bundles that did build: you can
+      # attach the missing one later rather than starting the release again.
+      fail-fast: false
+      matrix:
+        include:
+          # One .dmg for both Apple architectures rather than two downloads nobody can
+          # tell apart.
+          - label: macOS (universal)
+            os: macos-latest
+            targets: aarch64-apple-darwin,x86_64-apple-darwin
+            args: --target universal-apple-darwin
+          - label: Linux
+            os: ubuntu-latest
+            targets: ''
+            args: ''
+          - label: Windows
+            os: windows-latest
+            targets: ''
+            args: ''
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.targets }}
+
+      # Cargo's registry and the src-tauri build products. Without this every release
+      # recompiles the whole of wry and tao from scratch, which is most of the wall clock.
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # The webview itself, plus what tauri-build links against. Only Linux needs this;
+      # macOS has WebKit and Windows has WebView2 already.
+      - name: System webview dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            libssl-dev \
+            build-essential \
+            patchelf \
+            file
+
+      - run: npm ci
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # vite.config.ts puts the bundle under /<repo>/ when GITHUB_REPOSITORY is set,
+          # which is right for Pages and wrong for an app serving from its own root.
+          DESKTOP: '1'
+        with:
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || format('untagged-{0}', github.run_id) }}
+          releaseName: Biome Generator ${{ github.ref_type == 'tag' && github.ref_name || github.run_id }}
+          releaseBody: |
+            Generate hexagonal biome tiles and export them for printing, in a native window.
+
+            **macOS**: the app is unsigned, so the first launch needs
+            *right-click → Open* rather than a double-click.
+            **Linux**: `.deb` and `.AppImage`; the AppImage needs no install.
+            **Windows**: `.msi`.
+
+            The web version is at https://f00d4tehg0dz.github.io/biome-generator/ and is
+            the same generator, minus the save dialog.
+          # Draft, always. A release is public the moment it is published, and the bundles
+          # arrive one platform at a time.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

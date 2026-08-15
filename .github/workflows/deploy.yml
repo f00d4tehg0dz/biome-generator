@@ -1,0 +1,104 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Adrian Chrysanthou
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Lets you redeploy from the Actions tab without pushing.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # One deploy at a time; a newer push supersedes a queued one. In-progress deploys are left
+  # to finish rather than cancelled, so Pages is never left half-updated.
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Typecheck and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test
+
+      # Proves the exporters still produce openable files, on every push. Cheap, and the
+      # kind of thing that breaks quietly.
+      - name: Write a sample export
+        run: npx vite-node src/export/smoke.report.ts -- ./export-sample
+
+      - name: Keep the sample for inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: export-sample
+          path: export-sample/
+          retention-days: 14
+
+  build:
+    name: Build
+    needs: check
+    runs-on: ubuntu-latest
+
+    # configure-pages needs these to switch the Pages source over to Actions by itself.
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # GITHUB_REPOSITORY gives vite.config.ts both the `/<repo>/` base path and the source
+      # link the AGPL asks for. Nothing here is hardcoded, so forks work unchanged.
+      - run: npm run build
+
+      # `enablement` flips the Pages source to GitHub Actions. Without it, a repository left
+      # on "deploy from a branch" serves its own root, which means the *unbuilt* index.html,
+      # a page whose only script tag points at /src/main.tsx and which renders nothing.
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    name: Deploy
+    # Pull requests get the checks and the build, but must not publish.
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

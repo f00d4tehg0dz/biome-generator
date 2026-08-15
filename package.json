@@ -1,0 +1,51 @@
+{
+  "name": "biome-generator",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "license": "AGPL-3.0-or-later",
+  "author": "Adrian Chrysanthou",
+  "description": "Procedural low-poly hexagonal biome tiles, generated in the browser and exported for 3D printing.",
+  "homepage": "https://f00d4tehg0dz.github.io/biome-generator/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/f00d4tehg0dz/biome-generator.git"
+  },
+  "bugs": {
+    "url": "https://github.com/f00d4tehg0dz/biome-generator/issues"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "desktop": "tauri dev",
+    "desktop:build": "tauri build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@react-three/drei": "^10.0.0",
+    "@react-three/fiber": "^9.0.0",
+    "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/plugin-dialog": "^2.0.0",
+    "@tauri-apps/plugin-fs": "^2.0.0",
+    "fflate": "^0.8.3",
+    "polygon-clipping": "^0.15.7",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "three": "^0.180.0",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0",
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.180.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "^5.7.0",
+    "vite": "^7.0.0",
+    "vitest": "^3.0.0"
+  }
+}

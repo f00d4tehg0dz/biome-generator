@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.vite/
+*.local
+.DS_Store
+
+# Output of the export smoke script
+export-sample/
+out/
+
+# Rust build products for the desktop shell
+src-tauri/target/
+src-tauri/gen/
+*.md
+
+# Keep these
+!.gitignore
+!README.md

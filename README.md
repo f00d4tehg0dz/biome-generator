@@ -5,13 +5,15 @@
 Generate low-poly pastel hexagonal biome tiles in the browser, connect them into a board, and export them for 3D printing. Single colour, or multi-colour for AMS / CFS systems with 1 to 4 filaments.
 
 <p align="center">
-  <img src="references/screencaps/biome-screencap.png" width="46%" alt="Seven-tile park cluster" />
-  <img src="references/screencaps/biome-screencap-2.png" width="46%" alt="Coastal biome" />
+  <img src="/screencaps/biome-screencap.png" width="46%" alt="Meadow biome Single tile" />
+  <img src="/screencaps/biome-screencap-2.png" width="46%" alt="Meadow biome more tiles" />
+  <img src="/screencaps/biome-screencap-3.png" width="46%" alt="Lake biome more tiles" />
+  <img src="/screencaps/biome-screencap-4.png" width="46%" alt="Coastal biome more tiles" />
 </p>
 
 ---
 
-## What it does
+## Features
 
 - **Generates** a hex tile of a chosen biome from a seeded terraced ground, water, paths, trees, rocks, benches, huts, fences.
 - **Connects** tiles on a hex grid. Neighbours agree on their shared edge, so grass meets grass, water meets water, and a path continues across the seam, stuff like that.
@@ -23,16 +25,16 @@ Generate low-poly pastel hexagonal biome tiles in the browser, connect them into
 ```bash
 npm install
 npm run dev        # http://localhost:5173
-npm run test       # geometry, determinism, printability and export tests
+npm run test
 npm run typecheck
 ```
 
 ## Desktop
 
 ```bash
-rustup default stable   # once — the shell is Tauri, so it needs a Rust toolchain
-npm run desktop         # dev, with the Vite server behind it
-npm run desktop:build   # bundles into src-tauri/target/release/bundle/
+rustup default stable
+npm run desktop
+npm run desktop:build
 ```
 
 ## Testing 

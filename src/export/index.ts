@@ -17,7 +17,7 @@ import { writeBinaryStl } from './stl';
 import { writeThreeMf, type ColourGroup } from './threemf';
 import { writeStlBundle } from './bundle';
 
-export type ExportFormat = 'stl' | 'bundle' | '3mf' | '3mf-bambu';
+export type ExportFormat = 'stl' | 'bundle' | '3mf';
 
 export interface ExportRequest {
   board: Board;
@@ -100,14 +100,13 @@ export function exportBoard(request: ExportRequest): ExportedFile[] {
         break;
 
       case '3mf':
-      case '3mf-bambu':
         files.push({
-          name: `${stem}_${request.colourCount}c${
-            request.format === '3mf-bambu' ? '_bambu' : ''
-          }.3mf`,
+          name: `${stem}_${request.colourCount}c.3mf`,
           data: writeThreeMf(colourGroups(plate, request.paletteBiome, request.colourCount), {
-            vendor: request.format === '3mf-bambu' ? 'bambu' : 'none',
             title: `Biome board ${request.seed}`,
+            // Centred on the bed. The geometry is built around (0, 0) and these slicers put
+            // their origin at the front-left corner of the plate.
+            origin: [request.printer.bed[0] / 2, request.printer.bed[1] / 2],
           }),
         });
         break;

@@ -26,10 +26,17 @@ export interface ColourGroup {
 }
 
 export interface ThreeMfOptions {
-  /** Adds the Bambu/Orca metadata that groups the objects as one multi-part model. */
-  vendor?: 'none' | 'bambu';
   /** Model title, recorded in the archive metadata. */
   title?: string;
+  /**
+   * Where the plate's centre sits in bed coordinates, millimetres.
+   *
+   * Bed origin in these slicers is the front-left corner, not the middle, so geometry built
+   * around (0, 0) arrives with three quarters of itself off the plate. Bambu Studio quietly
+   * rearranges it; Orca and Creality Print refuse to slice and say the object is over the
+   * boundary. Passing the bed's centre puts it where the user would have dragged it.
+   */
+  origin?: readonly [number, number];
 }
 
 const CONTENT_TYPES = `<?xml version="1.0" encoding="UTF-8"?>
@@ -49,18 +56,18 @@ const PRECISION = 4;
 
 export function writeThreeMf(groups: readonly ColourGroup[], options: ThreeMfOptions = {}): Uint8Array {
   const live = groups.filter((group) => group.solids.length > 0);
-  const files: Record<string, Uint8Array> = {
-    '[Content_Types].xml': strToU8(CONTENT_TYPES),
-    '_rels/.rels': strToU8(RELS),
-    '3D/3dmodel.model': strToU8(modelXml(live, options.title ?? 'Biome board')),
-  };
 
-  if (options.vendor === 'bambu') {
-    files['Metadata/model_settings.config'] = strToU8(bambuModelSettings(live));
-    files['Metadata/project_settings.config'] = strToU8(bambuProjectSettings(live));
-  }
-
-  return zipSync(files, { level: 6 });
+  return zipSync(
+    {
+      '[Content_Types].xml': strToU8(CONTENT_TYPES),
+      '_rels/.rels': strToU8(RELS),
+      '3D/3dmodel.model': strToU8(
+        modelXml(live, options.title ?? 'Biome board', options.origin ?? [0, 0]),
+      ),
+      'Metadata/model_settings.config': strToU8(modelSettings(live)),
+    },
+    { level: 6 },
+  );
 }
 
 /** Resource ids. Mesh objects start at 3; the assembly follows them. */
@@ -78,7 +85,11 @@ export function meshObjectId(index: number): number {
   return FIRST_OBJECT_ID + index;
 }
 
-function modelXml(groups: readonly ColourGroup[], title: string): string {
+function modelXml(
+  groups: readonly ColourGroup[],
+  title: string,
+  origin: readonly [number, number],
+): string {
   const materials = groups
     .map((group) => `      <base name="${escapeXml(group.name)}" displaycolor="${toRgba(group.colour)}"/>`)
     .join('\n');
@@ -136,7 +147,9 @@ ${components}
     </object>
   </resources>
   <build>
-    <item objectid="${assemblyId(groups.length)}" transform="1 0 0 0 1 0 0 0 1 0 0 0"/>
+    <item objectid="${assemblyId(groups.length)}" transform="1 0 0 0 1 0 0 0 1 ${round(
+      origin[0],
+    )} ${round(origin[1])} 0"/>
   </build>
 </model>`;
 }
@@ -183,18 +196,25 @@ ${triangles.join('\n')}
 }
 
 /**
- * Bambu/Orca flavour: groups the objects as one model whose parts carry an extruder each,
- * so the filament map populates on import instead of arriving as N loose objects.
+ * The part-to-extruder map, which is the only thing that actually colours the model.
  *
- * This path is empirical and version-sensitive. It must be re-verified against each new
- * Bambu Studio / OrcaSlicer major version, and the per-colour STL bundle ships alongside it
- * as the guaranteed fallback.
+ * Core-spec 3MF colour (`basematerials`, `m:colorgroup`) is written too, but no slicer here
+ * assigns an extruder from it: a file carrying only that arrives with the right filaments
+ * listed and every part on extruder 1. Bambu Studio, OrcaSlicer and Creality Print all read
+ * this file instead, being forks of one another. PrusaSlicer reads neither and wants its own
+ * `Slic3r_PE_model.config`, which is keyed by triangle ranges rather than object ids; until
+ * that can be tested against a real PrusaSlicer, the STL bundle is its path.
+ *
+ * Deliberately no `project_settings.config`. A partial one is worse than none: Orca reads it
+ * as a customised preset, warns about unsafe G-code, and replaces the user's own printer and
+ * filament selections with entries named after the file. Which filament goes where is the
+ * user's business, so the part names carry the colour instead.
  */
-function bambuModelSettings(groups: readonly ColourGroup[]): string {
+function modelSettings(groups: readonly ColourGroup[]): string {
   const parts = groups
     .map(
       (group, index) => `    <part id="${meshObjectId(index)}" subtype="normal_part">
-      <metadata key="name" value="${escapeXml(group.name)}"/>
+      <metadata key="name" value="${escapeXml(group.name)} ${group.colour.toUpperCase()}"/>
       <metadata key="extruder" value="${index + 1}"/>
     </part>`,
     )
@@ -207,17 +227,10 @@ function bambuModelSettings(groups: readonly ColourGroup[]): string {
 <config>
   <object id="${assemblyId(groups.length)}">
     <metadata key="name" value="biome_board"/>
+    <metadata key="extruder" value="1"/>
 ${parts}
   </object>
 </config>`;
-}
-
-function bambuProjectSettings(groups: readonly ColourGroup[]): string {
-  const colours = groups.map((group) => `"${group.colour.toUpperCase()}"`).join(', ');
-  return `{
-  "filament_colour": [${colours}],
-  "filament_type": [${groups.map(() => '"PLA"').join(', ')}]
-}`;
 }
 
 function round(value: number): string {

@@ -187,10 +187,11 @@ describe('3MF', () => {
   const plate = layoutPlates(single, PRINTERS[1]!).plates[0]!;
   const groups = colourGroups(plate, 'meadow', 4);
 
-  it('is a zip holding the three files the spec requires', () => {
+  it('is a zip holding the three files the spec requires, plus the part map', () => {
     const files = unzipSync(writeThreeMf(groups));
     expect(Object.keys(files).sort()).toEqual([
       '3D/3dmodel.model',
+      'Metadata/model_settings.config',
       '[Content_Types].xml',
       '_rels/.rels',
     ]);
@@ -252,11 +253,22 @@ describe('3MF', () => {
     }
   });
 
-  it('uses an identity transform, since the geometry is already in world millimetres', () => {
+  it('rotates and scales nothing, and translates only onto the bed', () => {
+    // The geometry is already in world millimetres, so the transform may carry a position
+    // and nothing else. Its rotation block stays the identity.
     const model = strFromU8(unzipSync(writeThreeMf(groups))['3D/3dmodel.model']!);
     const transforms = model.match(/transform="[^"]+"/g) ?? [];
     expect(transforms).toHaveLength(1);
     expect(transforms[0]).toBe('transform="1 0 0 0 1 0 0 0 1 0 0 0"');
+  });
+
+  it('places the plate at the bed centre, because the bed origin is its front-left corner', () => {
+    // Built around (0, 0), the model hangs three quarters off the plate. Bambu Studio moves
+    // it for you; Orca and Creality Print refuse to slice and report it over the boundary.
+    const model = strFromU8(
+      unzipSync(writeThreeMf(groups, { origin: [128, 128] }))['3D/3dmodel.model']!,
+    );
+    expect(model).toContain('transform="1 0 0 0 1 0 0 0 1 128 128 0"');
   });
 
   it('emits exactly N materials at N colours, never an unused one', () => {
@@ -274,23 +286,29 @@ describe('3MF', () => {
     expect(written).toBe(groups.reduce((sum, group) => sum + triangleCount(group.solids), 0));
   });
 
-  it('adds the vendor metadata only for the Bambu flavour', () => {
-    const plain = unzipSync(writeThreeMf(groups));
-    expect(plain['Metadata/model_settings.config']).toBeUndefined();
-
-    const bambu = unzipSync(writeThreeMf(groups, { vendor: 'bambu' }));
-    const settings = strFromU8(bambu['Metadata/model_settings.config']!);
+  it('assigns every part an extruder, which is the only thing that colours the model', () => {
+    const archive = unzipSync(writeThreeMf(groups));
+    const settings = strFromU8(archive['Metadata/model_settings.config']!);
     expect(settings).toContain('key="extruder" value="1"');
     expect(settings).toContain('key="extruder" value="4"');
-    expect(strFromU8(bambu['Metadata/project_settings.config']!)).toContain('filament_colour');
   });
 
-  it('points the vendor metadata at the assembly and its real part ids', () => {
+  it('defines no presets of its own', () => {
+    // A partial project_settings.config reads as a customised preset: Orca warns about
+    // unsafe G-code and replaces the user's printer and filaments with entries named after
+    // the file. Which filament goes where is theirs to choose, so the colour rides along in
+    // the part name instead.
+    const archive = unzipSync(writeThreeMf(groups));
+    expect(archive['Metadata/project_settings.config']).toBeUndefined();
+    expect(strFromU8(archive['Metadata/model_settings.config']!)).toContain('#');
+  });
+
+  it('points the part metadata at the assembly and its real part ids', () => {
     // Describing an object the model file does not contain is how the parts ended up at the
     // wrong height: the slicer reconciles the two descriptions by moving things.
-    const bambu = unzipSync(writeThreeMf(groups, { vendor: 'bambu' }));
-    const settings = strFromU8(bambu['Metadata/model_settings.config']!);
-    const model = strFromU8(bambu['3D/3dmodel.model']!);
+    const archive = unzipSync(writeThreeMf(groups));
+    const settings = strFromU8(archive['Metadata/model_settings.config']!);
+    const model = strFromU8(archive['3D/3dmodel.model']!);
 
     expect(settings).toContain(`<object id="${assemblyId(4)}">`);
     expect(model).toContain(`<object id="${assemblyId(4)}" type="model">`);
@@ -380,7 +398,7 @@ describe('exportBoard', () => {
   });
 
   it('produces non-empty output in every format', () => {
-    for (const format of ['stl', 'bundle', '3mf', '3mf-bambu'] as const) {
+    for (const format of ['stl', 'bundle', '3mf'] as const) {
       for (const file of exportBoard({ ...base, format })) {
         expect(file.data.byteLength, `${format} ${file.name}`).toBeGreaterThan(1000);
       }

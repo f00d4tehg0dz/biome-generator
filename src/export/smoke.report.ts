@@ -24,7 +24,7 @@ hexSpiral(1).forEach((coord, i) => {
 const board = generateBoard({ seed: 'smoke', R: 50, connectors: 'dovetail', plan });
 console.log(`board: ${board.tiles.length} tiles, ${board.triangles} triangles`);
 
-for (const format of ['stl', 'bundle', '3mf', '3mf-bambu'] as ExportFormat[]) {
+for (const format of ['stl', 'bundle', '3mf'] as ExportFormat[]) {
   const files = exportBoard({
     board,
     paletteBiome: 'coast',

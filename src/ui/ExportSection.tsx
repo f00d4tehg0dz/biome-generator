@@ -17,12 +17,7 @@ const FORMATS: { id: ExportFormat; label: string; hint: string }[] = [
   {
     id: '3mf',
     label: '3MF',
-    hint: 'Colours and units travel with the file. Loads as one part per filament.',
-  },
-  {
-    id: '3mf-bambu',
-    label: '3MF (Bambu)',
-    hint: 'Adds Bambu/Orca metadata so the filament map fills itself in. Unverified, so keep the bundle as a fallback.',
+    hint: 'One object, one part per filament, already assigned and sitting in the middle of the bed. Verified in Bambu Studio, OrcaSlicer and Creality Print.',
   },
   { id: 'stl', label: 'Single STL', hint: 'One colour, one solid. Universal.' },
 ];

@@ -72,6 +72,7 @@ export const BIOMES: Record<BiomeId, Biome> = {
         { id: 'bush', weight: 3 },
         { id: 'flowerPatch', weight: 4 },
         { id: 'bench', weight: 3 },
+        { id: 'picnicTable', weight: 2 },
         { id: 'lamp', weight: 2 },
         { id: 'signpost', weight: 1 },
         { id: 'boulder', weight: 1 },

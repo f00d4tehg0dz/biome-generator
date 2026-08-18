@@ -9,7 +9,7 @@
  * furniture. Every builder that bridges declares `bridges: true`.
  */
 
-import { MeshBuilder, MAX_BRIDGE, MIN_LEG, type Solid } from './solid';
+import { EMBED, MeshBuilder, MAX_BRIDGE, MIN_LEG, type Solid } from './solid';
 import { beam, lathe } from './primitives';
 import { baseFrame, Parts, type PropContext, type PropDef } from './prop';
 
@@ -59,6 +59,54 @@ export const bench: PropDef = {
       width: PLANK,
       height: 3.0,
     });
+
+    return b.build();
+  },
+};
+
+export const picnicTable: PropDef = {
+  id: 'picnicTable',
+  footprint: 7.7,
+  height: 6,
+  budget: 160,
+  bridges: true,
+  build(ctx) {
+    const rng = ctx.rng;
+    const frame = baseFrame(ctx);
+    const length = rng.range(11, 13);
+    const seatZ = 3.0;
+    const topZ = rng.range(5.0, 5.6);
+    const PLANK = 1.2;
+    const b = new Parts();
+
+    // Two solid trestles rather than four legs and a cross member. The seats land on the
+    // wide lower half and the top on the narrow upper half, so every plank is carried by
+    // something instead of hanging beside a leg, and the whole frame prints off the bed.
+    const inset = length / 2 - 1.5;
+    const trestles = b.part('prop.picnicTable.trestles', 'wood');
+    for (const x of [-inset, inset]) {
+      beam(trestles, frame, { from: [x, 0, 0], to: [x, 0, seatZ + 0.4], width: 1.6, height: 8.4 });
+      beam(trestles, frame, { from: [x, 0, seatZ], to: [x, 0, topZ], width: 1.6, height: 4.4 });
+    }
+
+    // The planks bridge the gap between the trestles, which is what `bridges` declares.
+    beam(b.part('prop.picnicTable.top', 'wood'), frame, {
+      from: [-length / 2, 0, topZ - 0.2],
+      to: [length / 2, 0, topZ - 0.2],
+      width: 4.6,
+      height: PLANK,
+    });
+
+    // One part for both seats: they never touch, so they cannot weld into each other.
+    const seats = b.part('prop.picnicTable.seats', 'wood');
+    for (const y of [-3.4, 3.4]) {
+      beam(seats, frame, {
+        from: [-length / 2 + 0.4, y, seatZ + 0.1],
+        to: [length / 2 - 0.4, y, seatZ + 0.1],
+        width: 2.2,
+        height: PLANK,
+      });
+    }
 
     return b.build();
   },
@@ -142,10 +190,22 @@ interface HutSpec {
   snow: boolean;
 }
 
+/**
+ * How far the eave reaches past the wall, as a multiple of the wall's half-width.
+ *
+ * Not a styling choice. A hip roof rising from the wall line barely clears the wall at all,
+ * and at 1.06 it did not clear it: the rim stood a fifth of a millimetre proud of the roof
+ * the whole way round, which reads as a hairline of wall colour tracing the eave. The roof
+ * has to *cover* the top of the walls, and the width of the eave is what buys the height to
+ * do it with.
+ */
+const EAVE = 1.18;
+
 function hutLike(ctx: PropContext, spec: HutSpec): Solid[] {
   const rng = ctx.rng;
   const frame = baseFrame(ctx);
   const solids: Solid[] = [];
+  const half = spec.width / 2;
 
   const walls = new MeshBuilder();
   beam(walls, frame, {
@@ -156,24 +216,38 @@ function hutLike(ctx: PropContext, spec: HutSpec): Solid[] {
   });
   solids.push(walls.build(`prop.${spec.id}.walls`, 'wood'));
 
+  const eaveZ = spec.height - EMBED;
+
+  /**
+   * Height of the roof's surface `m` from the centre, measured square to a face.
+   *
+   * The roof is a four-sided lathe phased onto the diagonals, so its faces are flat and
+   * axis-aligned and a point's cover depends on its distance from the axis along the wider
+   * of the two axes, not on its radius.
+   */
+  const roofTop = (m: number) => eaveZ + spec.roofRise * (1 - m / (half * EAVE));
+
   if (spec.chimney) {
+    // Height taken from the roof it comes through rather than from the apex. Measured from
+    // the apex, a stack standing a third of the way out from the middle towered over the
+    // house by most of the roof's rise.
+    const centre = spec.width * 0.28;
     const stack = new MeshBuilder();
     beam(stack, frame, {
-      from: [spec.width * 0.28, 0, spec.height - 1.5],
-      to: [spec.width * 0.28, 0, spec.height + spec.roofRise + 1.5],
+      from: [centre, 0, spec.height - 1.5],
+      to: [centre, 0, roofTop(centre + 1.1) + 3.4],
       width: 2.2,
       height: 2.2,
     });
     solids.push(stack.build(`prop.${spec.id}.chimney`, 'wood'));
   }
 
-  // A hip roof: four faces, each rising at 45° from the eave to the apex.
-  const half = spec.width / 2;
+  // A hip roof: four faces, each rising from the eave to the apex.
   const roof = new MeshBuilder();
   lathe(roof, frame, {
     profile: [
-      { r: half * Math.SQRT2 * 1.06, z: spec.height - 0.6 },
-      { r: 0, z: spec.height - 0.6 + spec.roofRise },
+      { r: half * Math.SQRT2 * EAVE, z: eaveZ },
+      { r: 0, z: eaveZ + spec.roofRise },
     ],
     sides: 4,
     phase: Math.PI / 4,
@@ -184,8 +258,8 @@ function hutLike(ctx: PropContext, spec: HutSpec): Solid[] {
     const cap = new MeshBuilder();
     lathe(cap, frame, {
       profile: [
-        { r: half * Math.SQRT2 * 0.55, z: spec.height - 0.6 + spec.roofRise * 0.45 },
-        { r: 0, z: spec.height - 0.6 + spec.roofRise + 0.5 },
+        { r: half * Math.SQRT2 * 0.55, z: eaveZ + spec.roofRise * 0.45 },
+        { r: 0, z: eaveZ + spec.roofRise + 0.5 },
       ],
       sides: 4,
       phase: Math.PI / 4,
@@ -198,7 +272,7 @@ function hutLike(ctx: PropContext, spec: HutSpec): Solid[] {
 
 export const hut: PropDef = {
   id: 'hut',
-  footprint: 9.9,
+  footprint: 10.9,
   height: 17,
   budget: 200,
   build: (ctx) =>
@@ -214,7 +288,7 @@ export const hut: PropDef = {
 
 export const cabin: PropDef = {
   id: 'cabin',
-  footprint: 10.7,
+  footprint: 11.8,
   height: 21,
   budget: 200,
   build: (ctx) =>
@@ -230,7 +304,7 @@ export const cabin: PropDef = {
 
 export const barn: PropDef = {
   id: 'barn',
-  footprint: 13.0,
+  footprint: 14.3,
   height: 23,
   budget: 200,
   build: (ctx) =>
@@ -423,6 +497,7 @@ export const haystack: PropDef = {
 
 export const BUILT = {
   bench,
+  picnicTable,
   lamp,
   fence,
   hut,

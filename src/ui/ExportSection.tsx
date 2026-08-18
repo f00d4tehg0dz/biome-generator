@@ -126,8 +126,7 @@ export function ExportSection({ board, paletteSource }: { board: Board; paletteS
         <p className="hint">
           {describe(outcome) ?? (
             <>
-              Colours come from {paletteSource}. Everything is millimetres, sitting on the bed,
-              and needs no scaling or rotation.
+              Colours come from {paletteSource}.
             </>
           )}
         </p>

@@ -305,9 +305,8 @@ function ColoursPanel({
       </ul>
 
       <p className="hint">
-        One palette for the board: four filaments are four filaments. Taken from{' '}
-        {paletteSource}, the most common biome here; each tile still binds its own materials to
-        these slots.
+        Taken from{' '}
+        {paletteSource};
       </p>
     </div>
   );

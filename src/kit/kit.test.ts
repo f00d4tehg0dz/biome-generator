@@ -9,13 +9,15 @@ import {
   EMBED,
   MAX_BRIDGE,
   MAX_CANTILEVER,
+  MIN_DURABLE,
   MIN_FEATURE,
   triangleCount,
   type Solid,
 } from './solid';
 import { checkSolid } from '../check/manifold';
 import { checkPropOverhang } from '../check/overhang';
-import { checkFeatures } from '../check/features';
+import { checkFeatures, memberSection } from '../check/features';
+import { weakestSection } from '../check/section';
 import { checkFloating } from '../check/enclosure';
 
 const SEEDS = Array.from({ length: 12 }, (_, i) => `p${i}`);
@@ -112,6 +114,39 @@ describe('every prop', () => {
         report.ok,
         `${id}/${seed}: ${report.violations.map((v) => `${v.name} ${v.smallest.toFixed(2)}mm`).join(', ')}`,
       ).toBe(true);
+    });
+  });
+
+  // Printable is not the same as survives-being-handled, and these two are why. Everything
+  // that broke off a printed tile — trunks, posts, branches, stems, rails — passed every check
+  // above, because a bounding box cannot see a thin part inside a big prop and cannot see a
+  // thin part at all once it is tilted.
+
+  it('has no rod thin enough to snap off', () => {
+    eachProp((id, solids, seed) => {
+      for (const solid of solids) {
+        const { thinnest, rod } = memberSection(solid);
+        // `rod`, not `thinnest`: thin in one direction is a plate, and a plate lying on the
+        // surface it belongs to — a lily pad, a crop row — is held along its whole face.
+        // Thin in two is a lever, and a lever is what comes away in your fingers.
+        expect(
+          rod,
+          `${id}/${seed} ${solid.name} is ${rod.toFixed(2)}mm across (thinnest ${thinnest.toFixed(2)}mm)`,
+        ).toBeGreaterThanOrEqual(MIN_DURABLE - 1e-6);
+      }
+    });
+  });
+
+  it('has no loaded section thin enough to snap under what stands on it', () => {
+    eachProp((id, solids, seed) => {
+      // The whole prop at once: its parts interpenetrate by design, so a crown measured on
+      // its own looks like it balances on the 1.5 mm neck that is in fact buried in a trunk.
+      const weak = weakestSection(solids);
+      if (!weak) return;
+      expect(
+        weak.thickness,
+        `${id}/${seed} narrows to ${weak.thickness.toFixed(2)}mm at z=${weak.z.toFixed(1)} while carrying ${weak.carrying.toFixed(0)}mm³`,
+      ).toBeGreaterThanOrEqual(MIN_DURABLE - 1e-6);
     });
   });
 

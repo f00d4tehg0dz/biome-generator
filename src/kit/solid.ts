@@ -40,8 +40,29 @@ export const BOTTOM_CHAMFER = 0.4;
  * reference. Props below the minimum are culled at scatter time, not shrunk.
  */
 export const MIN_FEATURE = 1.0;
-export const MIN_WALL = 1.2;
-export const MIN_LEG = 1.6;
+export const MIN_WALL = 1.6;
+export const MIN_LEG = 2.6;
+
+/**
+ * Durability: the thinnest any rod-like member, or any section carrying load, may be.
+ *
+ * A different question from printability above, and a stricter one. A 1.1 mm branch prints
+ * perfectly. It also snaps off between the plate and the shelf, which is what happened:
+ * trunks, posts, branches and stems all came away, and every one of them was inside the
+ * printable limits. Printable means the nozzle can lay it down; this is about surviving being
+ * peeled off the bed, cleaned up, and handled by someone who does not know it is fragile.
+ *
+ * It is a floor rather than a target — a trunk carrying a canopy comes out at twice this, and
+ * should. What it rules out is the member that is thin *for no reason*, because nobody
+ * converted the number they wrote into the number that gets printed.
+ *
+ * Measured across the part, never along an axis, and never from the radius a profile is
+ * written in. A square section's thin direction is its side. A hexagonal one's is flat to
+ * flat, which is `2·r·cos(π/6)`: the *inscribed* diameter. Confusing the two is how a trunk
+ * written `r: 1.3` turned out to be 1.84 mm of wood. See `memberSection` and `weakestSection`,
+ * which measure the two ways this gets violated.
+ */
+export const MIN_DURABLE = 2.2;
 /** Longest unsupported horizontal span allowed. Only built props are permitted any. */
 export const MAX_BRIDGE = 12;
 /**

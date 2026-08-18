@@ -108,9 +108,11 @@ export const cairn: PropDef = {
     // Each stone starts no wider than the top of the one below, so a stack of steps reads
     // without a single downward-facing shelf. Consecutive stones overlap, so one solid each.
     let z = 0;
-    let radius = rng.range(2.8, 3.4);
+    let radius = rng.range(3.0, 3.6);
     for (let i = 0; i < 3; i++) {
-      const top = radius * rng.range(0.76, 0.86);
+      // A gentler step, because it compounds: at 0.76 three times over, the top stone came
+      // out barely 2 mm across.
+      const top = radius * rng.range(0.82, 0.9);
       const thickness = rng.range(1.8, 2.6);
       lathe(parts.part(`prop.cairn.${i}`, 'rock'), frame, {
         profile: [

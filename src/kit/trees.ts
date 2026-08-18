@@ -17,13 +17,22 @@ import { MeshBuilder, type Solid } from './solid';
 import { beam, flareTo, lathe, type ProfileRing } from './primitives';
 import { baseFrame, Parts, type PropContext, type PropDef } from './prop';
 
-/** How far a branch's root is pushed back inside its parent, so its cap is buried. */
-const ROOT_SINK = 1.2;
+/**
+ * How far a limb's root is pushed back inside its parent, so its base cap is buried.
+ *
+ * Scaled to the limb rather than fixed: the cap that has to disappear is as wide as the limb
+ * is, so a thicker branch has to reach further in. At the old fixed 1.2 mm a 2.4 mm branch
+ * would have left a corner of its base cap outside the trunk.
+ */
+function rootSink(thickness: number): number {
+  return Math.max(1.2, thickness * 0.75);
+}
 
 interface TrunkSpec {
   radius: number;
   height: number;
   taper: number;
+  sides: number;
 }
 
 function trunk(ctx: PropContext, spec: TrunkSpec, name: string): Solid {
@@ -33,16 +42,27 @@ function trunk(ctx: PropContext, spec: TrunkSpec, name: string): Solid {
       { r: spec.radius, z: 0 },
       { r: spec.radius * spec.taper, z: spec.height },
     ],
-    sides: 4,
-    phase: ctx.rng.range(0, Math.PI / 2),
+    sides: spec.sides,
+    phase: ctx.rng.range(0, (Math.PI * 2) / spec.sides),
   });
   return b.build(name, 'wood');
 }
 
-/** Trunk radius at a height, and the largest cross-section that fits inside it there. */
+/** Trunk radius at a height. */
 function trunkRadiusAt(spec: TrunkSpec, z: number): number {
   const t = Math.min(1, Math.max(0, z / spec.height));
   return spec.radius * (1 - t) + spec.radius * spec.taper * t;
+}
+
+/**
+ * The largest radius that still fits *inside* the trunk at a height.
+ *
+ * A lathe's profile radius reaches its corners; between them the wall cuts in to
+ * `r·cos(π/sides)`. Anything rooted in the trunk has to stay inside that smaller circle or a
+ * sliver of its base cap sticks out through the flats as an exposed downward face.
+ */
+function trunkInsideAt(spec: TrunkSpec, z: number): number {
+  return trunkRadiusAt(spec, z) * Math.cos(Math.PI / spec.sides);
 }
 
 export const conifer: PropDef = {
@@ -96,15 +116,25 @@ function crownedTree(ctx: PropContext, id: string, material: 'blossom' | 'foliag
   const rng = ctx.rng;
   const radius = material === 'blossom' ? rng.range(6, 7.6) : rng.range(5, 6.4);
   const stem = material === 'blossom' ? rng.range(7, 9) : rng.range(5, 6.5);
-  const spec: TrunkSpec = { radius: material === 'blossom' ? 1.4 : 1.3, height: stem, taper: 0.78 };
+
+  // Six sides at this radius, not four at half of it. The four-sided trunk this replaces was
+  // written `r: 1.3`, which is 1.84 mm flat to flat — and it was carrying a crown of over a
+  // thousand cubic millimetres on a lever twenty millimetres long. They snapped off, and the
+  // surprise is that any survived. See MIN_NECK.
+  const spec: TrunkSpec = {
+    radius: material === 'blossom' ? 2.6 : 2.4,
+    height: stem,
+    taper: 0.82,
+    sides: 6,
+  };
 
   const attach = stem * 0.72;
   const b = new MeshBuilder();
   lathe(b, baseFrame(ctx), {
     profile: crown(
-      // Start no wider than the trunk's inscribed radius at that height, so the crown's
+      // Start no wider than the trunk's inside radius at that height, so the crown's
       // underside is entirely buried in the trunk.
-      trunkRadiusAt(spec, attach) * Math.cos(Math.PI / 4),
+      trunkInsideAt(spec, attach),
       radius,
       attach,
       material === 'blossom' ? rng.range(21, 27) : rng.range(16, 21),
@@ -149,19 +179,20 @@ export const palm: PropDef = {
     const parts = new Parts();
     lathe(parts.part('prop.palm.trunk', 'wood'), frame, {
       profile: [
-        { r: 1.6, z: 0 },
-        { r: 1.2, z: height },
+        { r: 2.6, z: 0 },
+        { r: 2.1, z: height },
       ],
-      sides: 5,
+      sides: 6,
       phase: rng.range(0, Math.PI * 2),
     });
 
-    // A thickened crown, so the fronds have something wide enough to root inside.
-    const bossFoot: ProfileRing = { r: 1.0, z: height - 2.2 };
-    const bossBrow = flareTo(bossFoot, 2.4);
+    // A thickened crown, so the fronds have something wide enough to root inside. It has to
+    // grow with them: the fronds below are more than twice the section they were.
+    const bossFoot: ProfileRing = { r: 1.6, z: height - 2.2 };
+    const bossBrow = flareTo(bossFoot, 3.4);
     lathe(parts.part('prop.palm.crown', 'wood'), frame, {
-      profile: [bossFoot, bossBrow, { r: 2.0, z: bossBrow.z + 1.0 }, { r: 0, z: bossBrow.z + 1.9 }],
-      sides: 5,
+      profile: [bossFoot, bossBrow, { r: 2.8, z: bossBrow.z + 1.2 }, { r: 0, z: bossBrow.z + 2.2 }],
+      sides: 6,
       phase: rng.range(0, Math.PI * 2),
     });
 
@@ -173,22 +204,27 @@ export const palm: PropDef = {
     const rise = Math.sin((50 * Math.PI) / 180);
     const reach = Math.cos((50 * Math.PI) / 180);
     const root = bossBrow.z + 0.3;
+    const FROND_WIDE = 2.8;
+    const FROND_THICK = 2.2;
+    const sink = rootSink(FROND_WIDE);
     for (let i = 0; i < count; i++) {
       const angle = phase + (i / count) * Math.PI * 2;
-      const length = rng.range(6.5, 8.5);
+      // Shortened as they thickened. A frond is a cantilever, and what breaks one is the
+      // ratio of its reach to its section, not either on its own.
+      const length = rng.range(6, 7.5);
       beam(parts.part(`prop.palm.frond.${i}`, 'foliage'), frame, {
         from: [
-          -Math.cos(angle) * reach * ROOT_SINK,
-          -Math.sin(angle) * reach * ROOT_SINK,
-          root - rise * ROOT_SINK,
+          -Math.cos(angle) * reach * sink,
+          -Math.sin(angle) * reach * sink,
+          root - rise * sink,
         ],
         to: [
           Math.cos(angle) * reach * length,
           Math.sin(angle) * reach * length,
           root + rise * length,
         ],
-        width: 1.4,
-        height: 1.1,
+        width: FROND_WIDE,
+        height: FROND_THICK,
         taper: 0,
       });
     }
@@ -206,10 +242,13 @@ export const bare: PropDef = {
     const rng = ctx.rng;
     const frame = baseFrame(ctx);
     const height = rng.range(10, 14);
-    // Wide enough, with enough sides, that a branch rooted ROOT_SINK back along its own
-    // axis still has its base cap inside the trunk's *inscribed* radius. A four-sided
-    // trunk only inscribes 0.71 r, which is not enough to swallow a 1.1 mm branch.
-    const spec: TrunkSpec = { radius: 2.0, height, taper: 0.7 };
+    // The trunk is sized by what has to fit inside it, not by how it looks. A branch rooted
+    // back along its own axis buries a base cap as wide as the branch, so the trunk's *inside*
+    // radius where the branch meets it has to exceed that cap's half-diagonal. At the old
+    // r 2.0 on five sides, a branch thick enough not to snap would not have fitted.
+    const spec: TrunkSpec = { radius: 3.0, height, taper: 0.8, sides: 6 };
+    const BRANCH = 2.4;
+    const sink = rootSink(BRANCH);
 
     const parts = new Parts();
     lathe(parts.part('prop.bare.trunk', 'wood'), frame, {
@@ -217,7 +256,7 @@ export const bare: PropDef = {
         { r: spec.radius, z: 0 },
         { r: spec.radius * spec.taper, z: height },
       ],
-      sides: 5,
+      sides: spec.sides,
       phase: rng.range(0, Math.PI * 2),
     });
 
@@ -227,16 +266,16 @@ export const bare: PropDef = {
       const angle = phase + (i / count) * Math.PI * 2 + rng.range(-0.3, 0.3);
       // 55° above horizontal keeps every branch underside inside the 45° limit.
       const elevation = rng.range(54, 64) * (Math.PI / 180);
-      const length = rng.range(3.5, 5.5);
+      const length = rng.range(3.5, 5);
       const start = height * rng.range(0.45, 0.7);
       const dx = Math.cos(angle) * Math.cos(elevation);
       const dy = Math.sin(angle) * Math.cos(elevation);
       const dz = Math.sin(elevation);
       beam(parts.part(`prop.bare.branch.${i}`, 'wood'), frame, {
-        from: [-dx * ROOT_SINK, -dy * ROOT_SINK, start - dz * ROOT_SINK],
+        from: [-dx * sink, -dy * sink, start - dz * sink],
         to: [dx * length, dy * length, start + dz * length],
-        width: 1.1,
-        height: 1.1,
+        width: BRANCH,
+        height: BRANCH,
         taper: 0,
       });
     }
@@ -267,18 +306,21 @@ export const stump: PropDef = {
 
 export const sapling: PropDef = {
   id: 'sapling',
-  footprint: 2.1,
+  footprint: 3.0,
   height: 10,
   budget: 40,
   build(ctx) {
     const rng = ctx.rng;
     const b = new MeshBuilder();
+    // A cone is the one shape that gets thinner only where it is carrying less, so its tip
+    // being fine is not a weakness. The base still has to hold the whole thing up, and at a
+    // ninth of its height it was down to 2.16 mm — thin enough to fold over.
     lathe(b, baseFrame(ctx), {
       profile: [
-        { r: rng.range(1.4, 1.9), z: 0 },
+        { r: rng.range(2.4, 2.9), z: 0 },
         { r: 0, z: rng.range(8, 11) },
       ],
-      sides: 5,
+      sides: 6,
       phase: rng.range(0, Math.PI * 2),
     });
     return [b.build('prop.sapling', 'foliage')];

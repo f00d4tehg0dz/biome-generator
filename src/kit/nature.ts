@@ -3,9 +3,13 @@
 /**
  * Ground cover: the small stuff that makes a tile read as inhabited rather than empty.
  *
- * These are the props most likely to fall below the printable minimum, so every dimension
- * here is checked against MIN_FEATURE at nominal scale, and scatter culls them rather than
- * shrinking them when the tile scale drops.
+ * These are the props most likely to fall below the printable minimum, so every dimension here
+ * is checked at nominal scale, and scatter culls them rather than shrinking them when the tile
+ * scale drops.
+ *
+ * They were also the worst offenders for the thing printing exposed: written as lathe radii on
+ * four sides, a stem that reads as "0.75" in the source is 1.06 mm of plastic flat to flat.
+ * Six sides and a radius that means what it looks like. See MIN_DURABLE.
  */
 
 import { MeshBuilder } from './solid';
@@ -46,23 +50,24 @@ export const bush: PropDef = {
 
 export const flowerPatch: PropDef = {
   id: 'flowerPatch',
-  footprint: 3.6,
+  footprint: 4.2,
   height: 3,
-  budget: 72,
+  budget: 100,
   build(ctx) {
     const rng = ctx.rng;
     const frame = baseFrame(ctx);
     const parts = new Parts();
-    // Four sides at r 0.75 gives a 1.5 mm square section, over the 1.0 mm minimum.
+    // Six sides at r 1.5 gives 2.6 mm flat to flat. The old four sides at r 0.75 were 1.06 mm
+    // of plastic — printable, and gone the first time anyone touched the tile.
     // Separate solids because two scattered stems can land close enough to overlap.
     around(ctx, rng.int(3, 4), 2.6, (x, y, i) => {
       lathe(parts.part(`prop.flowerPatch.${i}`, 'blossom'), frame.translate(x, y, 0), {
         profile: [
-          { r: 0.75, z: 0 },
-          { r: 0.6, z: rng.range(1.8, 2.8) },
+          { r: 1.5, z: 0 },
+          { r: 1.3, z: rng.range(1.8, 2.8) },
         ],
-        sides: 4,
-        phase: rng.range(0, Math.PI / 2),
+        sides: 6,
+        phase: rng.range(0, Math.PI / 3),
       });
     });
     return parts.build();
@@ -71,21 +76,22 @@ export const flowerPatch: PropDef = {
 
 export const reed: PropDef = {
   id: 'reed',
-  footprint: 2.8,
+  footprint: 3.7,
   height: 8,
   budget: 60,
   build(ctx) {
     const rng = ctx.rng;
     const frame = baseFrame(ctx);
     const parts = new Parts();
-    around(ctx, rng.int(4, 5), 1.8, (x, y, i) => {
+    // Shorter as well as thicker: a reed is a cone, and it was a tall one on a 1.1 mm base.
+    around(ctx, rng.int(4, 5), 2.0, (x, y, i) => {
       lathe(parts.part(`prop.reed.${i}`, 'foliage'), frame.translate(x, y, 0), {
         profile: [
-          { r: 0.8, z: 0 },
-          { r: 0, z: rng.range(5, 8.5) },
+          { r: 1.6, z: 0 },
+          { r: 0, z: rng.range(4.5, 7) },
         ],
-        sides: 4,
-        phase: rng.range(0, Math.PI / 2),
+        sides: 6,
+        phase: rng.range(0, Math.PI / 3),
       });
     });
     return parts.build();
@@ -115,7 +121,7 @@ export const lilyPad: PropDef = {
 
 export const mushroom: PropDef = {
   id: 'mushroom',
-  footprint: 2.6,
+  footprint: 3.4,
   height: 4,
   budget: 60,
   build(ctx) {
@@ -123,23 +129,23 @@ export const mushroom: PropDef = {
     const frame = baseFrame(ctx);
     const stemTop = rng.range(1.4, 2.2);
 
-    // Four sides, not three: a triangular stem's shortest bounding dimension is only
-    // 1.5 r, which puts a plausible-looking stem under the 1.0 mm minimum feature.
+    // Six sides at r 1.5 is 2.6 mm flat to flat, and the whole cap stands on it.
     const stem = new MeshBuilder();
     lathe(stem, frame, {
       profile: [
-        { r: 0.8, z: 0 },
-        { r: 0.75, z: stemTop + 0.4 },
+        { r: 1.5, z: 0 },
+        { r: 1.4, z: stemTop + 0.4 },
       ],
-      sides: 4,
-      phase: rng.range(0, Math.PI / 2),
+      sides: 6,
+      phase: rng.range(0, Math.PI / 3),
     });
 
     // The cap flares at 45°. A real mushroom's undercut would need support. Its foot stays
-    // inside the stem's *inscribed* radius, so the cap's underside is fully buried.
+    // inside the stem's *inscribed* radius (1.4·cos 30° = 1.21), so the cap's underside is
+    // fully buried — and the brim grew with the stem, or it would read as a nail.
     const cap = new MeshBuilder();
-    const foot: ProfileRing = { r: 0.45, z: stemTop };
-    const brim = flareTo(foot, rng.range(1.9, 2.4));
+    const foot: ProfileRing = { r: 1.1, z: stemTop };
+    const brim = flareTo(foot, rng.range(2.7, 3.3));
     lathe(cap, frame, {
       profile: [foot, brim, { r: brim.r * 0.8, z: brim.z + 0.7 }, { r: 0, z: brim.z + 1.3 }],
       sides: 5,
@@ -152,12 +158,14 @@ export const mushroom: PropDef = {
 
 export const log: PropDef = {
   id: 'log',
-  footprint: 5.6,
+  footprint: 5.8,
   height: 3.4,
   budget: 40,
   build(ctx) {
     const rng = ctx.rng;
-    const radius = rng.range(1.5, 2.0);
+    // A log reads as a log at any thickness, and at the old 1.5–2.0 it read as a twig and
+    // broke like one. Nothing here costs anything but plastic.
+    const radius = rng.range(2.2, 2.8);
     const taper = 0.88;
     const sides = 6;
     // Rotating a hexagonal lathe onto its side puts a flat face on the ground and keeps
@@ -195,7 +203,8 @@ export const duneGrass: PropDef = {
       const angle = phase + (i / count) * Math.PI * 2;
       // 60° above horizontal; a drooping blade would overhang.
       const elevation = rng.range(58, 70) * (Math.PI / 180);
-      const length = rng.range(5, 7.5);
+      // Shorter and thicker. A blade is a cantilever anchored only at the ground.
+      const length = rng.range(4.5, 6.5);
       // Blades share a root, so they overlap: one solid each.
       beam(parts.part(`prop.duneGrass.${i}`, 'foliage'), frame, {
         from: [0, 0, 0],
@@ -204,8 +213,8 @@ export const duneGrass: PropDef = {
           Math.sin(angle) * Math.cos(elevation) * length,
           Math.sin(elevation) * length,
         ],
-        width: 1.4,
-        height: 1.1,
+        width: 2.6,
+        height: 2.2,
         taper: 0,
       });
     }
@@ -215,7 +224,7 @@ export const duneGrass: PropDef = {
 
 export const cactus: PropDef = {
   id: 'cactus',
-  footprint: 5.8,
+  footprint: 6.1,
   height: 14,
   budget: 120,
   build(ctx) {
@@ -226,8 +235,8 @@ export const cactus: PropDef = {
     const parts = new Parts();
     lathe(parts.part('prop.cactus.body', 'foliage'), frame, {
       profile: [
-        { r: 2.0, z: 0 },
-        { r: 2.1, z: height * 0.7 },
+        { r: 2.4, z: 0 },
+        { r: 2.5, z: height * 0.7 },
         { r: 0, z: height },
       ],
       sides: 6,
@@ -248,13 +257,14 @@ export const cactus: PropDef = {
       beam(parts.part(`prop.cactus.arm.${i}.elbow`, 'foliage'), frame, {
         from: [dx * 0.2, dy * 0.2, elbow - 1.0],
         to: [dx * (1.2 + reach), dy * (1.2 + reach), elbow + reach],
-        width: 1.8,
-        height: 1.8,
+        width: 2.6,
+        height: 2.6,
       });
       // Sink the vertical section back along the elbow's own 45° axis, not straight down.
       // Straight down puts the base cap's corners outside the elbow, leaving a flat
-      // downward face hanging in the open; along the axis they stay inside it.
-      const sink = 1.6 / Math.SQRT2;
+      // downward face hanging in the open; along the axis they stay inside it. The sink
+      // scales with the section, or a thicker arm outgrows the joint that hides it.
+      const sink = 2.4 / Math.SQRT2;
       beam(parts.part(`prop.cactus.arm.${i}.upper`, 'foliage'), frame, {
         from: [
           dx * (1.2 + reach - sink),
@@ -262,9 +272,9 @@ export const cactus: PropDef = {
           elbow + reach - sink,
         ],
         to: [dx * (1.2 + reach), dy * (1.2 + reach), elbow + reach + rng.range(2, 4)],
-        width: 1.7,
-        height: 1.7,
-        taper: 0.85,
+        width: 2.4,
+        height: 2.4,
+        taper: 0.9,
       });
     }
 

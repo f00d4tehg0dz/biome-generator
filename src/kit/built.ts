@@ -9,7 +9,7 @@
  * furniture. Every builder that bridges declares `bridges: true`.
  */
 
-import { EMBED, MeshBuilder, MAX_BRIDGE, MIN_LEG, type Solid } from './solid';
+import { EMBED, MeshBuilder, MAX_BRIDGE, MIN_LEG, MIN_WALL, type Solid } from './solid';
 import { beam, lathe } from './primitives';
 import { baseFrame, Parts, type PropContext, type PropDef } from './prop';
 
@@ -32,7 +32,7 @@ export const bench: PropDef = {
     // A park bench is mostly seat.
     const length = rng.range(11, 13.5);
     const seatZ = rng.range(3.6, 4.2);
-    const PLANK = 1.2;
+    const PLANK = 2.0;
     const b = new Parts();
 
     // Parts of a compound prop must *interpenetrate*, never meet flush. Two boxes sharing
@@ -76,7 +76,7 @@ export const picnicTable: PropDef = {
     const length = rng.range(11, 13);
     const seatZ = 3.0;
     const topZ = rng.range(5.0, 5.6);
-    const PLANK = 1.2;
+    const PLANK = 2.0;
     const b = new Parts();
 
     // Two solid trestles rather than four legs and a cross member. The seats land on the
@@ -85,8 +85,8 @@ export const picnicTable: PropDef = {
     const inset = length / 2 - 1.5;
     const trestles = b.part('prop.picnicTable.trestles', 'wood');
     for (const x of [-inset, inset]) {
-      beam(trestles, frame, { from: [x, 0, 0], to: [x, 0, seatZ + 0.4], width: 1.6, height: 8.4 });
-      beam(trestles, frame, { from: [x, 0, seatZ], to: [x, 0, topZ], width: 1.6, height: 4.4 });
+      beam(trestles, frame, { from: [x, 0, 0], to: [x, 0, seatZ + 0.4], width: 2.4, height: 8.4 });
+      beam(trestles, frame, { from: [x, 0, seatZ], to: [x, 0, topZ], width: 2.4, height: 4.4 });
     }
 
     // The planks bridge the gap between the trestles, which is what `bridges` declares.
@@ -114,7 +114,7 @@ export const picnicTable: PropDef = {
 
 export const lamp: PropDef = {
   id: 'lamp',
-  footprint: 2.0,
+  footprint: 2.9,
   height: 14,
   budget: 100,
   build(ctx) {
@@ -122,26 +122,30 @@ export const lamp: PropDef = {
     const frame = baseFrame(ctx);
     const height = rng.range(11, 14);
 
+    // 3.1 mm flat to flat. Written `r: 1.0` on four sides it was 1.4 mm at the foot and
+    // 1.06 mm at the top, holding a lamp head up fourteen millimetres in the air.
     const stem = new MeshBuilder();
     lathe(stem, frame, {
       profile: [
-        { r: 1.0, z: 0 },
-        { r: 0.75, z: height },
+        { r: 1.8, z: 0 },
+        { r: 1.5, z: height },
       ],
-      sides: 4,
-      phase: rng.range(0, Math.PI / 2),
+      sides: 6,
+      phase: rng.range(0, Math.PI / 3),
     });
 
-    // The head flares at 45° off the post, so its underside is inside the limit.
+    // The head flares at 45° off the post, so its underside is inside the limit, and its foot
+    // stays inside the post's flats (1.5·cos 30° = 1.30). Scaled up with the post so the lamp
+    // still reads as a lamp rather than a bead on a stick.
     const head = new MeshBuilder();
     lathe(head, frame, {
       profile: [
-        { r: 0.5, z: height - 1.2 },
-        { r: 1.7, z: height + 0.9 },
-        { r: 1.5, z: height + 2.0 },
+        { r: 1.2, z: height - 1.2 },
+        { r: 2.8, z: height + 0.9 },
+        { r: 2.5, z: height + 2.0 },
         { r: 0, z: height + 3.0 },
       ],
-      sides: 5,
+      sides: 6,
       phase: rng.range(0, Math.PI * 2),
     });
 
@@ -151,7 +155,7 @@ export const lamp: PropDef = {
 
 export const fence: PropDef = {
   id: 'fence',
-  footprint: 13.8,
+  footprint: 14.2,
   height: 6,
   budget: 140,
   bridges: true,
@@ -169,12 +173,15 @@ export const fence: PropDef = {
     for (let i = 0; i <= bays; i++) {
       post(posts, frame, (i - bays / 2) * spacing, 0, height);
     }
+    // Wider than tall: a rail spans up to 8.5 mm between posts, and a bridge lays down more
+    // reliably across its width than its height. At 1.2 mm square it printed and then came
+    // away from the posts.
     [height * 0.42, height * 0.84].forEach((railZ, i) => {
       beam(parts.part(`prop.fence.rail.${i}`, 'wood'), frame, {
         from: [(-bays / 2) * spacing, 0, railZ],
         to: [(bays / 2) * spacing, 0, railZ],
-        width: 1.2,
-        height: 1.2,
+        width: 2.4,
+        height: 2.0,
       });
     });
     return parts.build();
@@ -233,11 +240,14 @@ function hutLike(ctx: PropContext, spec: HutSpec): Solid[] {
     // house by most of the roof's rise.
     const centre = spec.width * 0.28;
     const stack = new MeshBuilder();
+    // The clearance argument tracks the stack's own half-width: it is asking how high the
+    // roof is at the stack's far corner, so that the stack clears the tiles there.
+    const stackWidth = 2.8;
     beam(stack, frame, {
       from: [centre, 0, spec.height - 1.5],
-      to: [centre, 0, roofTop(centre + 1.1) + 3.4],
-      width: 2.2,
-      height: 2.2,
+      to: [centre, 0, roofTop(centre + stackWidth / 2) + 3.4],
+      width: stackWidth,
+      height: stackWidth,
     });
     solids.push(stack.build(`prop.${spec.id}.chimney`, 'wood'));
   }
@@ -364,7 +374,7 @@ export const dock: PropDef = {
       from: [0, -length / 2, deckZ + 0.4],
       to: [0, length / 2, deckZ + 0.4],
       width,
-      height: 1.4,
+      height: 2.0,
     });
     return parts.build();
   },
@@ -421,12 +431,13 @@ export const well: PropDef = {
     // The lathe profile walks up the outside, across the rim, back *down* the inside and
     // closes on the axis, which is how a lathe makes a bucket without a boolean.
     const ring = new MeshBuilder();
+    const wall = MIN_WALL;
     lathe(ring, frame, {
       profile: [
         { r: outer, z: 0 },
         { r: outer, z: rim },
-        { r: outer - 1.2, z: rim },
-        { r: outer - 1.2, z: rim - 1.6 },
+        { r: outer - wall, z: rim },
+        { r: outer - wall, z: rim - 1.6 },
         { r: 0, z: rim - 1.6 },
       ],
       sides: 6,
@@ -461,12 +472,14 @@ export const signpost: PropDef = {
     const frame = baseFrame(ctx);
     const parts = new Parts();
     const height = rng.range(7, 9.5);
-    post(parts.part('prop.signpost.post', 'wood'), frame, 0, 0, height, 1.4);
+    // No size override: a signpost's post is a post, and its own 1.4 mm was the thinnest
+    // upright in the kit.
+    post(parts.part('prop.signpost.post', 'wood'), frame, 0, 0, height);
     beam(parts.part('prop.signpost.plate', 'wood'), frame, {
       from: [-2.6, 0, height - 1.6],
       to: [2.6, 0, height - 1.2],
-      width: 1.2,
-      height: 2.2,
+      width: 2.0,
+      height: 2.6,
     });
     return parts.build();
   },

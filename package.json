@@ -6,7 +6,7 @@
   "license": "AGPL-3.0-or-later",
   "author": "Adrian Chrysanthou",
   "description": "Procedural low-poly hexagonal biome tiles, generated in the browser and exported for 3D printing.",
-  "homepage": "https://f00d4tehg0dz.github.io/biome-generator/",
+  "homepage": "https://biomegenerator.com",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/f00d4tehg0dz/biome-generator.git"

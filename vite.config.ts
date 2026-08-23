@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Adrian Chrysanthou
+import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -14,6 +16,19 @@ const repository = process.env.GITHUB_REPOSITORY ?? '';
 const [, repositoryName] = repository.split('/');
 
 /**
+ * A custom domain serves the site from the domain's own root, not from `/<repo>/`.
+ *
+ * `public/CNAME` is the file GitHub Pages reads to keep the domain attached across deploys,
+ * so it is also what decides the base path here — one file rather than two settings that can
+ * disagree. They did disagree: with the domain attached and the base still `/biome-generator/`,
+ * every asset request went to a path that does not exist there, Pages answered each one with
+ * its 404 *page*, and the browser reported a stylesheet that 404s and a module blocked for
+ * being `text/html`. Both were the same missing prefix.
+ */
+const cnamePath = fileURLToPath(new URL('./public/CNAME', import.meta.url));
+const customDomain = existsSync(cnamePath) ? readFileSync(cnamePath, 'utf8').trim() : '';
+
+/**
  * The desktop shell serves the same bundle from the app's own root, so it always wants
  * `/`, including when the app is built by Actions, where GITHUB_REPOSITORY would otherwise
  * send it looking for its assets under a path that only exists on Pages.
@@ -24,7 +39,7 @@ const [, repositoryName] = repository.split('/');
 const desktop = Boolean(process.env.TAURI_ENV_PLATFORM || process.env.DESKTOP);
 
 export default defineConfig({
-  base: repositoryName && !desktop ? `/${repositoryName}/` : '/',
+  base: repositoryName && !desktop && !customDomain ? `/${repositoryName}/` : '/',
   plugins: [react()],
   // Tauri watches this port and fails rather than silently attaching to the wrong server.
   server: { strictPort: desktop },

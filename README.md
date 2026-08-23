@@ -1,6 +1,6 @@
 # Biome Generator
 
-**[Try it →](https://f00d4tehg0dz.github.io/biome-generator/)**
+**[Try it → biomegenerator.com](https://biomegenerator.com)**
 
 Generate low-poly pastel hexagonal biome tiles in the browser, connect them into a board, and export them for 3D printing. Single colour, or multi-colour for AMS / CFS systems with 1 to 4 filaments.
 
@@ -37,7 +37,7 @@ npm run desktop
 npm run desktop:build
 ```
 
-## Testing 
+## Testing
 
 Write a real export to disk
 ```

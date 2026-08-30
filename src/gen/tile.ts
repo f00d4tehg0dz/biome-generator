@@ -38,6 +38,7 @@ import { generateTerraces, type Terrace } from './terrain';
 import { generateWater, hexPolygon } from './water';
 import { directionsWith, type EdgeType } from './edges';
 import { generatePath, type PathRoute } from './paths';
+import { buildWalls } from './enclosure';
 import { scatter, type Placement } from './scatter';
 import { PATH_DROP, Surface } from './surface';
 
@@ -52,6 +53,14 @@ export interface TileParams {
   connectors?: ConnectorKind;
   /** How much of the biome to lay down. Defaults to all of it. */
   detail?: Detail;
+  /**
+   * Put a cave mouth on this tile, whatever the biome would have chosen.
+   *
+   * It takes the hero slot rather than joining the weights, because the hero is placed first
+   * and gets the good position. Asked for a cave, you should get one, not a one-in-six
+   * chance of one.
+   */
+  cave?: boolean;
 }
 
 export interface Tile {
@@ -94,15 +103,14 @@ export function generateTile(params: TileParams): Tile {
   );
 
   const surface = new Surface({ R, terraces, water, path: path?.polygon ?? null });
+  const scatterSpec = {
+    ...biome.scatter,
+    density: biome.scatter.density * detail.props,
+    ...(params.cave ? { hero: ['caveEntrance' as const, 'caveMouth' as const] } : {}),
+  };
+  // A cave was asked for by hand, so it is laid down even on a board stripped of props.
   const placements =
-    detail.props > 0
-      ? scatter(
-          rng,
-          { ...biome.scatter, density: biome.scatter.density * detail.props },
-          surface,
-          path,
-        )
-      : [];
+    detail.props > 0 || params.cave ? scatter(rng, scatterSpec, surface, path) : [];
 
   const solids: Solid[] = [];
   const connectors = planConnectors(params.connectors ?? 'dovetail', R);
@@ -201,6 +209,16 @@ export function generateTile(params: TileParams): Tile {
         z0: foot + TERRACE_RIM - EMBED,
         z1: top,
         chamfer: EMBED,
+      }),
+    );
+  }
+
+  if (biome.walled) {
+    solids.push(
+      ...buildWalls({
+        rng: makeRng(params.seed, params.biome, coord.q, coord.r, 'walls'),
+        R,
+        edges,
       }),
     );
   }

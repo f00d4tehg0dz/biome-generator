@@ -27,6 +27,8 @@ export interface BoardSpec {
   plan: BoardPlan;
   /** How much of each biome to lay down. Board-wide, so seams still agree. */
   detail?: Detail;
+  /** Hex keys the user has asked for a cave on. */
+  caves?: readonly string[];
 }
 
 export interface PlacedTile {
@@ -65,6 +67,7 @@ export function generateBoard(spec: BoardSpec): Board {
         edges,
         connectors: spec.connectors,
         detail,
+        cave: spec.caves?.includes(hexKey(coord)) ?? false,
       }),
       origin: axialToWorld(coord, spec.R),
     };

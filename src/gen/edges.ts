@@ -39,6 +39,9 @@ const BIOME_EDGES: Record<BiomeId, EdgeWeights> = {
   desert: { land: 7, path: 3 },
   tundra: { land: 7, water: 2, shore: 2, path: 1 },
   village: { land: 4, path: 7 },
+  // A dungeon is corridors and the walls between them, so it presents a way through more
+  // often than anything else does. `land` here is the wall: a seam with no door in it.
+  dungeon: { land: 3, path: 9 },
 };
 
 /**

@@ -21,7 +21,7 @@ const EDGE_LABEL: Record<EdgeType, string> = {
  * and they decide what a tile will and will not agree to build at each seam.
  */
 export function TileDetail({ board, selected }: { board: Board; selected: string | null }) {
-  const { plan, remove } = useApp();
+  const { plan, caves, remove, toggleCave } = useApp();
   if (!selected) return null;
 
   const coord = parseHexKey(selected);
@@ -48,13 +48,22 @@ export function TileDetail({ board, selected }: { board: Board; selected: string
             ))}
         </div>
 
-        <button
-          className="btn"
-          onClick={() => remove(coord)}
-          disabled={Object.keys(plan).length <= 1}
-        >
-          Remove tile
-        </button>
+        <div className="row row-actions">
+          <button
+            className="btn"
+            aria-pressed={caves.includes(selected)}
+            onClick={() => toggleCave(coord)}
+          >
+            {caves.includes(selected) ? 'Cave on' : 'Add cave'}
+          </button>
+          <button
+            className="btn"
+            onClick={() => remove(coord)}
+            disabled={Object.keys(plan).length <= 1}
+          >
+            Remove
+          </button>
+        </div>
       </div>
     </div>
   );

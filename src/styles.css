@@ -670,6 +670,14 @@ select {
   font-size: 12px;
 }
 
+/* A toggle that stays on, rather than a button that fires once. Declared after `.detail
+   .btn`, which has the same specificity: written before it, the background lost and the
+   white text stayed, which is white on pale grey. */
+.btn[aria-pressed='true'] {
+  background: var(--ink);
+  color: #fff;
+}
+
 .fallback {
   display: grid;
   place-content: center;

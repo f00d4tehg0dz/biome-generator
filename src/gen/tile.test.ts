@@ -9,6 +9,7 @@ import {
   EDGE_MARGIN,
   GRADE,
   MAX_TERRACES,
+  MIN_DURABLE,
   MIN_FEATURE,
   triangleCount,
 } from '../kit/solid';
@@ -23,7 +24,8 @@ import {
   neighbour,
 } from '../core/hex';
 import { maxRadius, minRadius, polygonContains } from '../core/polygon';
-import { PROPS, propMinFeature, propRadius, type PropId } from '../kit';
+import { PROPS, propMinFeature, propRadius, propRod, type PropId } from '../kit';
+import { overhangBySolid } from '../check/overhang';
 import type { Solid } from '../kit/solid';
 import { makeRng } from '../core/rng';
 import { pointInSolid } from '../check/enclosure';
@@ -90,6 +92,66 @@ describe('tile geometry', () => {
         }
       }
     });
+  });
+
+  it('keeps walls and doorways inside the tile, like everything else', () => {
+    const edges: EdgeType[] = ['path', 'land', 'path', 'land', 'land', 'path'];
+    for (const seed of ['vault7', 'deep', 'abc']) {
+      const tile = generateTile({ seed, biome: 'dungeon', R, edges });
+      // Walls, doorways and their fixtures only. The landform is held to the boundary by the
+      // test above, and its clipped fills sit a hundredth of a millimetre proud of the ideal
+      // hexagon, which is a rounding artefact rather than something a wall may copy.
+      const added = tile.solids.filter(
+        (s) =>
+          s.name.startsWith('tile.wall') ||
+          s.name.startsWith('tile.door') ||
+          s.name.startsWith('fixture.'),
+      );
+      expect(added.length, `${seed}: no walls were built`).toBeGreaterThan(0);
+      for (const p of cornersOf(added)) {
+        expect(
+          hexContains(p, R + 1e-6),
+          `${seed}: (${p[0].toFixed(1)}, ${p[1].toFixed(1)}) is outside the hex`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('leaves nothing the tile owns needing support: walls, doors and fixtures', () => {
+    // The landform test above cannot speak for all of these: a flame is not a prism, which is
+    // why it is named `fixture.` rather than `tile.`. And a prism can still overhang, which
+    // the first barred gate did: its top rail crossed the gaps between the bars. Props are
+    // allowed short spans and declare them; a wall is not, so everything the tile owns is
+    // held to no exposed overhang at all, with faces buried in a neighbour discounted.
+    // With corridors on some seams, because the default edges are all land and a tile with
+    // no corridor has no doorway to check. That is how the first gate shipped: its rail
+    // bridged the bars and no test built one.
+    const edges: EdgeType[] = ['path', 'land', 'path', 'land', 'land', 'path'];
+    for (const seed of ['vault7', 'deep', 'abc', 'p3']) {
+      const tile = generateTile({ seed, biome: 'dungeon', R, edges });
+      const exposed = overhangBySolid(tile.solids)
+        .filter((entry) => !entry.name.startsWith('prop.'))
+        .map((entry) => entry.name);
+      expect(exposed, `${seed}: tile geometry needing support`).toEqual([]);
+    }
+  });
+
+  it('opens a doorway wherever a corridor crosses a walled seam, and walls the rest', () => {
+    // The seam decides, so both neighbours agree without consulting each other: a wall on
+    // one side of a seam always has a wall facing it, and a doorway always has a doorway.
+    const walls: EdgeType[] = ['path', 'land', 'path', 'land', 'land', 'path'];
+    for (const seed of ['vault7', 'deep', 'abc', 'p3']) {
+      const tile = generateTile({ seed, biome: 'dungeon', R, edges: walls });
+      for (let direction = 0; direction < 6; direction++) {
+        const named = (kind: string) =>
+          tile.solids.some((s) => s.name.startsWith(`tile.${kind}.${direction}`));
+        if (tile.edges[direction] === 'path') {
+          expect(named('door'), `${seed} dir ${direction}: corridor without a doorway`).toBe(true);
+        } else {
+          expect(named('wall'), `${seed} dir ${direction}: seam without a wall`).toBe(true);
+        }
+      }
+    }
   });
 
   it('nests terraces strictly inside one another, clear of the edge margin', () => {
@@ -229,6 +291,21 @@ describe('placement', () => {
           propMinFeature(placement.id) * placement.scale,
           `${tile.biome}/${tile.seed}: ${placement.id} at ${placement.scale.toFixed(2)}×`,
         ).toBeGreaterThanOrEqual(MIN_FEATURE);
+      }
+    });
+  });
+
+  it('never shrinks a prop until its thinnest member would snap', () => {
+    // The companion to the rule above, and the one a bounding box cannot enforce. A bare
+    // tree at half scale still measures its whole crown and passes the feature-size cull,
+    // while the branch carrying that crown is down to a millimetre. Scaling is uniform, so
+    // the placed rod is the nominal rod times the scale, and it has to clear MIN_DURABLE.
+    everyTile((tile) => {
+      for (const placement of tile.placements) {
+        expect(
+          propRod(placement.id) * placement.scale,
+          `${tile.biome}/${tile.seed}: ${placement.id} at ${placement.scale.toFixed(2)}×`,
+        ).toBeGreaterThanOrEqual(MIN_DURABLE - 1e-6);
       }
     });
   });

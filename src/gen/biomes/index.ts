@@ -23,6 +23,7 @@ export const BIOME_IDS = [
   'desert',
   'tundra',
   'village',
+  'dungeon',
 ] as const;
 
 export type BiomeId = (typeof BIOME_IDS)[number];
@@ -47,6 +48,13 @@ export interface Biome {
   water: WaterSpec | null;
   /** Chance of a path corridor crossing the tile, 0..1. */
   path: number;
+  /**
+   * Walls at the seams, with a doorway wherever a corridor crosses.
+   *
+   * A flag rather than data because what it turns on is geometry, and geometry belongs in
+   * `src/gen/`. Only an interior has this: a meadow with a wall round it is a garden.
+   */
+  walled?: boolean;
   scatter: ScatterSpec;
 }
 
@@ -108,6 +116,8 @@ export const BIOMES: Record<BiomeId, Biome> = {
         { id: 'bush', weight: 3 },
         { id: 'boulder', weight: 3 },
         { id: 'rockCluster', weight: 2 },
+        { id: 'caveMouth', weight: 2 },
+        { id: 'caveCrack', weight: 2 },
       ],
     },
   },
@@ -154,7 +164,7 @@ export const BIOMES: Record<BiomeId, Biome> = {
     path: 0.3,
     scatter: {
       density: 0.2,
-      hero: ['peak'],
+      hero: ['peak', 'caveEntrance'],
       weights: [
         { id: 'peak', weight: 2 },
         { id: 'conifer', weight: 5, scale: [0.75, 1.0] },
@@ -163,6 +173,10 @@ export const BIOMES: Record<BiomeId, Biome> = {
         { id: 'rockCluster', weight: 3 },
         { id: 'cairn', weight: 2 },
         { id: 'bare', weight: 1 },
+        { id: 'caveMouth', weight: 2 },
+        { id: 'caveEntrance', weight: 2 },
+        { id: 'caveCrack', weight: 2 },
+        { id: 'crystal', weight: 1 },
       ],
     },
   },
@@ -216,6 +230,8 @@ export const BIOMES: Record<BiomeId, Biome> = {
         { id: 'duneGrass', weight: 2 },
         { id: 'cairn', weight: 1 },
         { id: 'signpost', weight: 1 },
+        { id: 'caveMouth', weight: 2 },
+        { id: 'caveCrack', weight: 2 },
       ],
     },
   },
@@ -232,7 +248,7 @@ export const BIOMES: Record<BiomeId, Biome> = {
     path: 0.35,
     scatter: {
       density: 0.2,
-      hero: ['cabin'],
+      hero: ['cabin', 'caveEntrance'],
       weights: [
         { id: 'bare', weight: 5 },
         { id: 'conifer', weight: 3 },
@@ -242,6 +258,9 @@ export const BIOMES: Record<BiomeId, Biome> = {
         { id: 'rockCluster', weight: 2 },
         { id: 'stump', weight: 2 },
         { id: 'signpost', weight: 1 },
+        { id: 'caveMouth', weight: 2 },
+        { id: 'caveEntrance', weight: 1 },
+        { id: 'crystal', weight: 2 },
       ],
     },
   },
@@ -274,6 +293,51 @@ export const BIOMES: Record<BiomeId, Biome> = {
       ],
     },
   },
+
+  dungeon: {
+    id: 'dungeon',
+    name: 'Dungeon',
+    blurb: 'Flagstone floor, standing and fallen pillars, braziers, a corridor through.',
+    // Two greys and a warm one. The whole biome hangs on the third: a room lit only by the
+    // colour of its own floor is a paving slab, and the brazier is what makes it a place.
+    palette: { S0: '#B4B0A6', S1: '#8A8078', S2: '#D89A54', S3: '#DCD6C8' },
+    // Stone is the floor here rather than an accent, rubble takes the base, and the flame
+    // material claims the feature slot the way a canopy does above ground.
+    binding: bindingWith({ stone: 'S0', rock: 'S1', wood: 'S1', blossom: 'S2', path: 'S3' }),
+    ground: 'stone',
+    // Flat on purpose. A room with a rolling floor is a cave.
+    terrain: { relief: 0.04, roughness: 0.12 },
+    water: null,
+    walled: true,
+    // Corridors are the point: a dungeon tile with no way in is a room nobody can reach.
+    path: 0.95,
+    scatter: {
+      // Lower than anything above ground. A room is mostly floor, and at the density a
+      // meadow uses the pillars closed ranks until the tile read as a colonnade with no
+      // room in it.
+      density: 0.13,
+      hero: ['pillar'],
+      // Interior only. Nothing in this list grows, and nothing in it belongs on a hillside:
+      // boulders and cairns and mushrooms read as a rockery that happens to be paved, which
+      // is what the first version of this biome looked like. What is left is architecture
+      // and what architecture leaves behind.
+      weights: [
+        // Pillars are pinned near full size. The default scatter range dips to 0.85, which
+        // takes the shaft under MIN_DURABLE, and a column is exactly the part that snaps.
+        { id: 'pillar', weight: 4, scale: [0.95, 1.15] },
+        { id: 'brokenPillar', weight: 4, scale: [0.95, 1.2] },
+        { id: 'dungeonWall', weight: 4, scale: [0.95, 1.1] },
+        { id: 'masonry', weight: 4 },
+        { id: 'brazier', weight: 3 },
+        { id: 'crate', weight: 3 },
+        { id: 'sarcophagus', weight: 2 },
+        { id: 'archway', weight: 2, scale: [0.95, 1.1] },
+        // Dripstone, where the roof has been leaking for a few centuries.
+        { id: 'stalagmite', weight: 1, scale: [0.7, 1] },
+      ],
+    },
+  },
+
 };
 
 export const BIOME_LIST: Biome[] = BIOME_IDS.map((id) => BIOMES[id]);

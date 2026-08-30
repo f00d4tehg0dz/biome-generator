@@ -8,12 +8,14 @@ import { TREES } from './trees';
 import { ROCKS } from './rocks';
 import { NATURE } from './nature';
 import { BUILT } from './built';
+import { CAVES } from './caves';
+import { DUNGEON } from './dungeon';
 import { WATER } from './water';
 import { soloContext, type PropDef } from './prop';
 import { makeRng } from '../core/rng';
-import { smallestFeature } from '../check/features';
+import { memberSection, smallestFeature } from '../check/features';
 
-export const PROPS = { ...TREES, ...ROCKS, ...NATURE, ...BUILT, ...WATER } satisfies Record<
+export const PROPS = { ...TREES, ...ROCKS, ...NATURE, ...BUILT, ...DUNGEON, ...CAVES, ...WATER } satisfies Record<
   string,
   PropDef
 >;
@@ -28,6 +30,8 @@ export const PROP_FAMILIES: { name: string; ids: PropId[] }[] = [
   { name: 'Rock', ids: Object.keys(ROCKS) as PropId[] },
   { name: 'Ground cover', ids: Object.keys(NATURE) as PropId[] },
   { name: 'Built', ids: Object.keys(BUILT) as PropId[] },
+  { name: 'Underground', ids: Object.keys(DUNGEON) as PropId[] },
+  { name: 'Caves', ids: Object.keys(CAVES) as PropId[] },
   { name: 'Water', ids: Object.keys(WATER) as PropId[] },
 ];
 
@@ -36,6 +40,7 @@ export function prop(id: PropId): PropDef {
 }
 
 const minFeatures = new Map<PropId, number>();
+const rods = new Map<PropId, number>();
 const radii = new Map<PropId, number>();
 
 /**
@@ -81,6 +86,31 @@ export function propMinFeature(id: PropId): number {
   const measured = smallestFeature(solids);
   minFeatures.set(id, measured);
   return measured;
+}
+
+/**
+ * The narrowest rod anywhere in a prop, in millimetres at nominal scale.
+ *
+ * The companion to `propMinFeature`, and the one that decides whether a shrunk prop survives
+ * handling rather than whether it prints at all. A bounding box cannot see a thin part inside
+ * a big prop: a bare tree measures its whole crown and passes the feature-size cull at half
+ * scale, while the branch carrying that crown is down to a millimetre of plastic.
+ *
+ * Measured over several seeds and taken at the minimum, because a builder that wobbles its
+ * profile does not produce the same weakest member every time.
+ */
+export function propRod(id: PropId): number {
+  const cached = rods.get(id);
+  if (cached !== undefined) return cached;
+
+  let rod = Infinity;
+  for (let seed = 0; seed < 6; seed++) {
+    for (const solid of PROPS[id].build(soloContext(makeRng('rod', id, seed)))) {
+      rod = Math.min(rod, memberSection(solid).rod);
+    }
+  }
+  rods.set(id, rod);
+  return rod;
 }
 
 export * from './prop';

@@ -18,3 +18,4 @@ src-tauri/gen/
 !README.md
 
 *.json
+/makerworld/biome-generator_assets/thumbnail

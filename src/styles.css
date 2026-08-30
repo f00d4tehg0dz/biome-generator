@@ -247,6 +247,56 @@ input[type='range'] {
   cursor: pointer;
 }
 
+/* Each dial keeps its label, its reading and its consequence together, so the panel reads
+   as three separate decisions rather than a bank of anonymous sliders. */
+.detail-row + .detail-row {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.detail-row .field-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.detail-row .field-label b {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A checkbox that carries its own explanation, since the consequence of the choice is not
+   obvious from three words. */
+.check {
+  display: flex;
+  gap: 9px;
+  align-items: start;
+  margin-top: 12px;
+  cursor: pointer;
+}
+
+.check input {
+  width: auto;
+  margin: 2px 0 0;
+  padding: 0;
+  accent-color: var(--ink);
+  flex: none;
+}
+
+.check span {
+  font-size: 12px;
+  font-weight: 550;
+}
+
+.check small {
+  display: block;
+  margin-top: 2px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
 kbd {
   font: inherit;
   font-size: 11px;

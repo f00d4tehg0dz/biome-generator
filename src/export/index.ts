@@ -14,7 +14,7 @@ import { resolvePalette, type ColourCount } from '../palette/reduce';
 import type { Solid } from '../kit/solid';
 import { layoutPlates, plateSolids, type Plate, type Printer } from './plate';
 import { writeBinaryStl } from './stl';
-import { writeThreeMf, type ColourGroup } from './threemf';
+import { writeThreeMf, type ColourGroup, type ThreeMfObject } from './threemf';
 import { writeStlBundle } from './bundle';
 
 export type ExportFormat = 'stl' | 'bundle' | '3mf';
@@ -28,6 +28,14 @@ export interface ExportRequest {
   seed: string;
   connectors: string;
   format: ExportFormat;
+  /**
+   * Write each tile as its own object rather than the board as one piece.
+   *
+   * The plate is identical either way, since tiles never touch. What changes is whether the
+   * slicer lets you pick a tile up and put it somewhere else, which is what someone printing
+   * a flower to rearrange afterwards is actually asking for.
+   */
+  separateTiles?: boolean;
 }
 
 export interface ExportedFile {
@@ -102,7 +110,7 @@ export function exportBoard(request: ExportRequest): ExportedFile[] {
       case '3mf':
         files.push({
           name: `${stem}_${request.colourCount}c.3mf`,
-          data: writeThreeMf(colourGroups(plate, request.paletteBiome, request.colourCount), {
+          data: writeThreeMf(threeMfContent(plate, request), {
             title: `Biome board ${request.seed}`,
             // Centred on the bed. The geometry is built around (0, 0) and these slicers put
             // their origin at the front-left corner of the plate.
@@ -114,6 +122,31 @@ export function exportBoard(request: ExportRequest): ExportedFile[] {
   }
 
   return files;
+}
+
+/**
+ * The plate as the 3MF should see it: one object, or one per tile.
+ *
+ * Each tile is grouped against the board's palette rather than its own, so the colours line
+ * up across objects and a tile that happens to use only two of the four filaments still
+ * points at the same slots as its neighbours.
+ */
+function threeMfContent(
+  plate: Plate,
+  request: ExportRequest,
+): ColourGroup[] | ThreeMfObject[] {
+  if (!request.separateTiles) {
+    return colourGroups(plate, request.paletteBiome, request.colourCount);
+  }
+
+  return plate.items.map(({ tile, offset }) => ({
+    name: `${BIOMES[tile.tile.biome].name} ${tile.tile.coord.q},${tile.tile.coord.r}`,
+    groups: colourGroups(
+      { ...plate, items: [{ tile, offset }] },
+      request.paletteBiome,
+      request.colourCount,
+    ),
+  }));
 }
 
 function describe(request: ExportRequest, plates: readonly Plate[]) {

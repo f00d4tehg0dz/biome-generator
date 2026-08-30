@@ -25,6 +25,20 @@ export interface ColourGroup {
   solids: Solid[];
 }
 
+/**
+ * One thing the slicer can select, move and arrange, made of one part per filament.
+ *
+ * A board can be written as a single piece or as a piece per tile. Physically the plate is
+ * the same either way, since the tiles never touch, but a slicer will only let you drag
+ * what it thinks is an object. Someone printing a flower to rearrange afterwards wants
+ * seven of them.
+ */
+export interface ThreeMfObject {
+  /** Shown in the slicer's object list. */
+  name: string;
+  groups: readonly ColourGroup[];
+}
+
 export interface ThreeMfOptions {
   /** Model title, recorded in the archive metadata. */
   title?: string;
@@ -54,43 +68,84 @@ const RELS = `<?xml version="1.0" encoding="UTF-8"?>
 /** Vertices are written to this many decimals, well under a nozzle width. */
 const PRECISION = 4;
 
-export function writeThreeMf(groups: readonly ColourGroup[], options: ThreeMfOptions = {}): Uint8Array {
-  const live = groups.filter((group) => group.solids.length > 0);
+export function writeThreeMf(
+  content: readonly ColourGroup[] | readonly ThreeMfObject[],
+  options: ThreeMfOptions = {},
+): Uint8Array {
+  const { objects, palette } = laidOut(content, options.title ?? 'Biome board');
 
   return zipSync(
     {
       '[Content_Types].xml': strToU8(CONTENT_TYPES),
       '_rels/.rels': strToU8(RELS),
       '3D/3dmodel.model': strToU8(
-        modelXml(live, options.title ?? 'Biome board', options.origin ?? [0, 0]),
+        modelXml(objects, palette, options.title ?? 'Biome board', options.origin ?? [0, 0]),
       ),
-      'Metadata/model_settings.config': strToU8(modelSettings(live)),
+      'Metadata/model_settings.config': strToU8(modelSettings(objects, palette)),
     },
     { level: 6 },
   );
 }
 
-/** Resource ids. Mesh objects start at 3; the assembly follows them. */
+/** Resource ids. The palettes take 1 and 2, and everything else is allocated after them. */
 const MATERIALS_ID = 1;
 const COLOURS_ID = 2;
 const FIRST_OBJECT_ID = 3;
 
-/** Id of the assembly object that holds every colour as a component. */
-export function assemblyId(groupCount: number): number {
-  return FIRST_OBJECT_ID + groupCount;
+interface Laid {
+  objects: ThreeMfObject[];
+  /**
+   * The filaments the file declares, which every object indexes into.
+   *
+   * Read before the empty groups are dropped, and from the full list rather than from
+   * whatever the first tile happened to use. Every object is grouped against the same board
+   * palette, so a tile with no water still has to call the accent colour filament four, not
+   * filament three.
+   */
+  palette: readonly ColourGroup[];
 }
 
-/** Id of the mesh object carrying colour `index`. */
-export function meshObjectId(index: number): number {
-  return FIRST_OBJECT_ID + index;
+/** Accepts either shape, so a caller with one object need not wrap it. */
+function laidOut(
+  content: readonly ColourGroup[] | readonly ThreeMfObject[],
+  title: string,
+): Laid {
+  const objects: readonly ThreeMfObject[] =
+    content.length > 0 && 'groups' in content[0]!
+      ? (content as readonly ThreeMfObject[])
+      : [{ name: title, groups: content as readonly ColourGroup[] }];
+
+  const palette = objects.reduce<readonly ColourGroup[]>(
+    (widest, object) => (object.groups.length > widest.length ? object.groups : widest),
+    [],
+  );
+
+  // An object with nothing in it is a name in the slicer's list attached to no geometry.
+  return {
+    palette,
+    objects: objects
+      .map((object) => ({ ...object, groups: object.groups.filter((g) => g.solids.length > 0) }))
+      .filter((object) => object.groups.length > 0),
+  };
+}
+
+/** Where each object's mesh and assembly ids begin, in declaration order. */
+function idsFor(objects: readonly ThreeMfObject[]): { mesh: number[]; assembly: number }[] {
+  let next = FIRST_OBJECT_ID;
+  return objects.map((object) => {
+    const mesh = object.groups.map(() => next++);
+    return { mesh, assembly: next++ };
+  });
 }
 
 function modelXml(
-  groups: readonly ColourGroup[],
+  objects: readonly ThreeMfObject[],
+  palette: readonly ColourGroup[],
   title: string,
   origin: readonly [number, number],
 ): string {
-  const materials = groups
+  const ids = idsFor(objects);
+  const materials = palette
     .map((group) => `      <base name="${escapeXml(group.name)}" displaycolor="${toRgba(group.colour)}"/>`)
     .join('\n');
 
@@ -101,18 +156,21 @@ function modelXml(
   // rendered in one colour. Others (Creality's, PrusaSlicer) read base materials.
   //
   // The objects point at the colorgroup, since that is the one with the stricter reader.
-  const colours = groups
+  const colours = palette
     .map((group) => `      <m:color color="${toRgba(group.colour)}"/>`)
     .join('\n');
 
-  const objects = groups
-    .map((group, index) => {
-      return `    <object id="${meshObjectId(index)}" type="model" pid="${COLOURS_ID}" pindex="${index}">
+  const meshes = objects
+    .flatMap((object, o) =>
+      object.groups.map((group, index) => {
+        const slot = palette.findIndex((entry) => entry.name === group.name);
+        return `    <object id="${ids[o]!.mesh[index]}" type="model" pid="${COLOURS_ID}" pindex="${Math.max(0, slot)}">
       <mesh>
-${meshXml(group.solids, index)}
+${meshXml(group.solids, Math.max(0, slot))}
       </mesh>
     </object>`;
-    })
+      }),
+    )
     .join('\n');
 
   // One object made of components, referenced once, not one build item per colour.
@@ -122,8 +180,23 @@ ${meshXml(group.solids, index)}
   // slab at 8.6, the water at 9), so four separate items were each dropped to the bed and
   // the model collapsed into itself. As one assembly there is a single thing to place, and
   // every part keeps its height relative to the rest.
-  const components = groups
-    .map((_, index) => `        <component objectid="${meshObjectId(index)}"/>`)
+  const assemblies = objects
+    .map(
+      (_, o) => `    <object id="${ids[o]!.assembly}" type="model">
+      <components>
+${ids[o]!.mesh.map((id) => `        <component objectid="${id}"/>`).join('\n')}
+      </components>
+    </object>`,
+    )
+    .join('\n');
+
+  const items = objects
+    .map(
+      (_, o) =>
+        `    <item objectid="${ids[o]!.assembly}" transform="1 0 0 0 1 0 0 0 1 ${round(
+          origin[0],
+        )} ${round(origin[1])} 0"/>`,
+    )
     .join('\n');
 
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -139,17 +212,11 @@ ${materials}
     <m:colorgroup id="${COLOURS_ID}">
 ${colours}
     </m:colorgroup>
-${objects}
-    <object id="${assemblyId(groups.length)}" type="model">
-      <components>
-${components}
-      </components>
-    </object>
+${meshes}
+${assemblies}
   </resources>
   <build>
-    <item objectid="${assemblyId(groups.length)}" transform="1 0 0 0 1 0 0 0 1 ${round(
-      origin[0],
-    )} ${round(origin[1])} 0"/>
+${items}
   </build>
 </model>`;
 }
@@ -210,14 +277,29 @@ ${triangles.join('\n')}
  * filament selections with entries named after the file. Which filament goes where is the
  * user's business, so the part names carry the colour instead.
  */
-function modelSettings(groups: readonly ColourGroup[]): string {
-  const parts = groups
-    .map(
-      (group, index) => `    <part id="${meshObjectId(index)}" subtype="normal_part">
+function modelSettings(
+  objects: readonly ThreeMfObject[],
+  palette: readonly ColourGroup[],
+): string {
+  const ids = idsFor(objects);
+
+  const written = objects
+    .map((object, o) => {
+      const parts = object.groups
+        .map((group, index) => {
+          const slot = Math.max(0, palette.findIndex((entry) => entry.name === group.name));
+          return `    <part id="${ids[o]!.mesh[index]}" subtype="normal_part">
       <metadata key="name" value="${escapeXml(group.name)} ${group.colour.toUpperCase()}"/>
-      <metadata key="extruder" value="${index + 1}"/>
-    </part>`,
-    )
+      <metadata key="extruder" value="${slot + 1}"/>
+    </part>`;
+        })
+        .join('\n');
+      return `  <object id="${ids[o]!.assembly}">
+    <metadata key="name" value="${escapeXml(object.name)}"/>
+    <metadata key="extruder" value="1"/>
+${parts}
+  </object>`;
+    })
     .join('\n');
 
   // The object id has to be the *assembly*, and the part ids its components. Naming the
@@ -225,11 +307,7 @@ function modelSettings(groups: readonly ColourGroup[]): string {
   // Bambu Studio reconciled the two by moving things.
   return `<?xml version="1.0" encoding="UTF-8"?>
 <config>
-  <object id="${assemblyId(groups.length)}">
-    <metadata key="name" value="biome_board"/>
-    <metadata key="extruder" value="1"/>
-${parts}
-  </object>
+${written}
 </config>`;
 }
 

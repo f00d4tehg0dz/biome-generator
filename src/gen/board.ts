@@ -13,6 +13,7 @@ import { axialToWorld, hexKey, hexSpiral, neighbour, parseHexKey, type Axial } f
 import type { ConnectorKind } from '../kit/connectors';
 import { triangleCount, type Solid } from '../kit/solid';
 import { BIOME_IDS, type BiomeId } from './biomes';
+import { FULL_DETAIL, type Detail } from './detail';
 import { resolveEdges, type EdgeType } from './edges';
 import { generateTile, type Tile } from './tile';
 
@@ -24,6 +25,8 @@ export interface BoardSpec {
   R: number;
   connectors: ConnectorKind;
   plan: BoardPlan;
+  /** How much of each biome to lay down. Board-wide, so seams still agree. */
+  detail?: Detail;
 }
 
 export interface PlacedTile {
@@ -41,6 +44,7 @@ export interface Board {
 
 export function generateBoard(spec: BoardSpec): Board {
   const coords = Object.keys(spec.plan).map(parseHexKey);
+  const detail = spec.detail ?? FULL_DETAIL;
 
   const tiles = coords.map((coord) => {
     const biome = spec.plan[hexKey(coord)]!;
@@ -49,6 +53,7 @@ export function generateBoard(spec: BoardSpec): Board {
       coord,
       biome,
       (direction) => spec.plan[hexKey(neighbour(coord, direction))] ?? null,
+      detail,
     );
 
     return {
@@ -59,6 +64,7 @@ export function generateBoard(spec: BoardSpec): Board {
         R: spec.R,
         edges,
         connectors: spec.connectors,
+        detail,
       }),
       origin: axialToWorld(coord, spec.R),
     };

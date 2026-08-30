@@ -2,7 +2,9 @@
 // Copyright (C) 2026 Adrian Chrysanthou
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { defineConfig } from 'vite';
+// Vitest owns this config's `test` block, and from Vitest 4 its own defineConfig is what
+// types it. Importing from 'vite' instead typechecks everything except the tests.
+import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
 /**

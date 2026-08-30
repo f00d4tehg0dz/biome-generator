@@ -8,6 +8,7 @@ import { SLOT_NAMES } from '../palette/slots';
 import type { ColourCount, ResolvedPalette } from '../palette/reduce';
 import { MAX_TILE_R, MIN_TILE_R, useApp, type Tab } from '../state/store';
 import { BOARD_PRESETS, type Board } from '../gen/board';
+import { isFullDetail, MAX_DETAIL } from '../gen/detail';
 import { PROP_IDS } from '../kit';
 import { ExportSection } from './ExportSection';
 import { LinkIcon, RedoIcon, RerollIcon, UndoIcon } from './icons';
@@ -60,6 +61,7 @@ function DesignPanel({ board }: { board: Board }) {
     connectors,
     plan,
     R,
+    detail,
     selected,
     view,
     past,
@@ -67,6 +69,7 @@ function DesignPanel({ board }: { board: Board }) {
     setSeed,
     setBiome,
     setConnectors,
+    setDetail,
     setR,
     reroll,
     clearBoard,
@@ -209,6 +212,44 @@ function DesignPanel({ board }: { board: Board }) {
       </div>
 
       <div className="card">
+        <h2>
+          Detail
+          {isFullDetail(detail) ? null : <span className="meta">turned down</span>}
+        </h2>
+
+        <DetailSlider
+          label="Props"
+          value={detail.props}
+          onChange={(props) => setDetail({ props })}
+          hint={
+            detail.props === 0
+              ? 'Bare tiles. Terrain, water and paths only, which is the interlocking hex on its own.'
+              : 'Trees, rocks, benches and the rest, as a share of what the biome would normally place.'
+          }
+        />
+        <DetailSlider
+          label="Roads at the seams"
+          value={detail.paths}
+          onChange={(paths) => setDetail({ paths })}
+          hint={
+            detail.paths === 0
+              ? 'No roads. Every tile now meets every other tile, so the set rearranges freely.'
+              : 'How willingly an edge carries a road. Fewer means more tiles interchange.'
+          }
+        />
+        <DetailSlider
+          label="Water at the seams"
+          value={detail.water}
+          onChange={(water) => setDetail({ water })}
+          hint={
+            detail.water === 0
+              ? 'Dry land, even in biomes built around a lake.'
+              : 'How willingly an edge carries water or a shore, and whether a body forms inside.'
+          }
+        />
+      </div>
+
+      <div className="card">
         <h2>{view === 'kit' ? 'Kit' : 'Model'}</h2>
         {view === 'kit' ? (
           <dl className="stats">
@@ -241,6 +282,55 @@ function DesignPanel({ board }: { board: Board }) {
         </dl>
       </div>
     </>
+  );
+}
+
+/**
+ * One of the generation dials, as a percentage of what the biome asks for.
+ *
+ * Committed on release rather than on every step. Dragging through the range would
+ * regenerate the whole board at each stop, and the boards in between are neither wanted nor
+ * cheap to build.
+ */
+function DetailSlider({
+  label,
+  value,
+  onChange,
+  hint,
+}: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+  hint: string;
+}) {
+  const [dragging, setDragging] = useState<number | null>(null);
+  const shown = dragging ?? value;
+
+  const commit = () => {
+    if (dragging !== null) onChange(dragging);
+    setDragging(null);
+  };
+
+  return (
+    <div className="detail-row">
+      <span className="field-label">
+        {label}
+        <b>{shown === 0 ? 'off' : `${Math.round(shown * 100)}%`}</b>
+      </span>
+      <input
+        type="range"
+        min={0}
+        max={MAX_DETAIL}
+        step={0.1}
+        value={shown}
+        aria-label={label}
+        onChange={(e) => setDragging(Number(e.target.value))}
+        onPointerUp={commit}
+        onKeyUp={commit}
+        onBlur={commit}
+      />
+      <p className="hint">{hint}</p>
+    </div>
   );
 }
 

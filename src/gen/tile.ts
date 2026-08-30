@@ -33,6 +33,7 @@ import {
 } from '../kit/solid';
 import { BASIN_DEPTH, WATER_DROP } from '../kit/water';
 import { BIOMES, type BiomeId } from './biomes';
+import { FULL_DETAIL, type Detail } from './detail';
 import { generateTerraces, type Terrace } from './terrain';
 import { generateWater, hexPolygon } from './water';
 import { directionsWith, type EdgeType } from './edges';
@@ -49,6 +50,8 @@ export interface TileParams {
   /** Resolved by the board. Defaults to all `land` for a tile generated on its own. */
   edges?: readonly EdgeType[];
   connectors?: ConnectorKind;
+  /** How much of the biome to lay down. Defaults to all of it. */
+  detail?: Detail;
 }
 
 export interface Tile {
@@ -74,10 +77,14 @@ export function generateTile(params: TileParams): Tile {
   const R = params.R ?? DEFAULT_R;
   const edges = params.edges ?? ALL_LAND;
   const biome = BIOMES[params.biome];
+  const detail = params.detail ?? FULL_DETAIL;
   const rng = makeRng(params.seed, params.biome, coord.q, coord.r);
   const hex = hexPolygon(R);
 
-  const water = generateWater(rng, biome.water, R, edges);
+  // Water is either wanted or it is not. Scaling a lake's coverage would leave a puddle in
+  // the middle of a basin that was carved for a lake, so the multiplier gates it instead,
+  // and the seam weights above have already decided how often water reaches an edge.
+  const water = generateWater(rng, detail.water > 0 ? biome.water : null, R, edges);
   const path = generatePath(rng, R, water ? [water] : [], directionsWith(edges, 'path'));
   const terraces = generateTerraces(
     rng,
@@ -87,7 +94,15 @@ export function generateTile(params: TileParams): Tile {
   );
 
   const surface = new Surface({ R, terraces, water, path: path?.polygon ?? null });
-  const placements = scatter(rng, biome.scatter, surface, path);
+  const placements =
+    detail.props > 0
+      ? scatter(
+          rng,
+          { ...biome.scatter, density: biome.scatter.density * detail.props },
+          surface,
+          path,
+        )
+      : [];
 
   const solids: Solid[] = [];
   const connectors = planConnectors(params.connectors ?? 'dovetail', R);

@@ -10,7 +10,7 @@ import { triangleCount } from '../kit/solid';
 import { boundsOf } from '../kit/solid';
 import { layoutPlates, plateSolids, PRINTERS, PLATE_SPACING } from './plate';
 import { writeBinaryStl, triangleCountOf } from './stl';
-import { assemblyId, meshObjectId, writeThreeMf } from './threemf';
+import { writeThreeMf } from './threemf';
 import { writeStlBundle } from './bundle';
 import { colourGroups, exportBoard } from './index';
 import type { ColourCount } from '../palette/reduce';
@@ -216,11 +216,53 @@ describe('3MF', () => {
     const model = strFromU8(unzipSync(writeThreeMf(groups))['3D/3dmodel.model']!);
     expect(model.match(/<item /g)).toHaveLength(1);
     expect(model.match(/<component /g)).toHaveLength(4);
-    expect(model).toContain(`<item objectid="${assemblyId(4)}"`);
-    // Every mesh object is referenced exactly once by the assembly.
-    for (let index = 0; index < 4; index++) {
-      expect(model).toContain(`<component objectid="${meshObjectId(index)}"/>`);
+
+    // The single build item points at the assembly, and the assembly at each mesh once.
+    const item = model.match(/<item objectid="(\d+)"/)![1]!;
+    const assembly = model.match(
+      new RegExp(`<object id="${item}" type="model">([\\s\\S]*?)</object>`),
+    )![1]!;
+    const referenced = [...assembly.matchAll(/<component objectid="(\d+)"/g)].map((m) => m[1]!);
+    expect(new Set(referenced).size).toBe(4);
+    for (const id of referenced) {
+      expect(model).toContain(`<object id="${id}" type="model" pid=`);
     }
+  });
+
+  it('writes one object per tile when asked, so a set can be rearranged', () => {
+    // Physically the plate is identical either way: the tiles never touch. What changes is
+    // whether the slicer will let you pick one up, which is the whole point of printing a
+    // flower you intend to re-lay later.
+    const plate = layoutPlates(generateBoard({ seed: 'split', R, connectors: 'dovetail', plan: flower('split') }), PRINTERS[1]!)
+      .plates[0]!;
+    const tiles = plate.items.map((item, index) => ({
+      name: `tile_${index}`,
+      groups: colourGroups({ ...plate, items: [item] }, 'meadow', 4),
+    }));
+
+    const archive = unzipSync(writeThreeMf(tiles, { title: 'set' }));
+    const model = strFromU8(archive['3D/3dmodel.model']!);
+    const settings = strFromU8(archive['Metadata/model_settings.config']!);
+
+    expect(model.match(/<item /g)).toHaveLength(tiles.length);
+    expect(settings.match(/<object id=/g)).toHaveLength(tiles.length);
+    // One palette for the file, however many objects index into it.
+    expect(model.match(/<base /g)).toHaveLength(4);
+    expect(settings).toContain('value="tile_0"');
+  });
+
+  it('numbers the filaments from the board, not from whatever a tile happens to use', () => {
+    // A meadow tile carries no water. Grouped on its own it yields three live colours, and
+    // if the file took its palette from that tile the accent would be filament three for it
+    // and filament four for its neighbour: the same colour printed twice, in two slots.
+    const dry = { name: 'dry', groups: colourGroups(plate, 'meadow', 4).slice(0, 3) };
+    const wet = { name: 'wet', groups: colourGroups(plate, 'meadow', 4) };
+
+    const settings = strFromU8(
+      unzipSync(writeThreeMf([dry, wet]))['Metadata/model_settings.config']!,
+    );
+    const extruders = [...settings.matchAll(/key="extruder" value="(\d+)"/g)].map((m) => m[1]!);
+    expect(extruders).toContain('4');
   });
 
   it('carries the colours as a materials-extension colorgroup as well as base materials', () => {
@@ -310,11 +352,16 @@ describe('3MF', () => {
     const settings = strFromU8(archive['Metadata/model_settings.config']!);
     const model = strFromU8(archive['3D/3dmodel.model']!);
 
-    expect(settings).toContain(`<object id="${assemblyId(4)}">`);
-    expect(model).toContain(`<object id="${assemblyId(4)}" type="model">`);
-    for (let index = 0; index < 4; index++) {
-      expect(settings).toContain(`<part id="${meshObjectId(index)}"`);
-      expect(model).toContain(`<component objectid="${meshObjectId(index)}"/>`);
+    const assembly = settings.match(/<object id="(\d+)">/)![1]!;
+    expect(model).toContain(`<object id="${assembly}" type="model">`);
+
+    // Every part named in the config is a mesh the model file actually contains, and the
+    // assembly refers to exactly those.
+    const parts = [...settings.matchAll(/<part id="(\d+)"/g)].map((m) => m[1]!);
+    expect(parts).toHaveLength(4);
+    for (const id of parts) {
+      expect(model).toContain(`<object id="${id}" type="model" pid=`);
+      expect(model).toContain(`<component objectid="${id}"/>`);
     }
   });
 

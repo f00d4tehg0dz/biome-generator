@@ -69,7 +69,12 @@ export const BIOMES: Record<BiomeId, Biome> = {
         { id: 'blossom', weight: 5 },
         { id: 'roundCrown', weight: 3 },
         { id: 'sapling', weight: 2 },
-        { id: 'bush', weight: 3 },
+        // No bushes here, on the advice of someone who printed a set on one nozzle. A tree
+        // carries its foliage well above the grass, so on a single-extruder printer the
+        // colours arrive as bands and you swap filament a handful of times at known layers.
+        // A bush is foliage sitting *in* the ground band, which forces the same two colours
+        // to alternate for the whole lower third of the print. Every other biome keeps its
+        // bushes; the park is the one people print plain.
         { id: 'flowerPatch', weight: 4 },
         { id: 'bench', weight: 3 },
         { id: 'picnicTable', weight: 2 },

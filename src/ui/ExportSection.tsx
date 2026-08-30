@@ -27,6 +27,7 @@ export function ExportSection({ board, paletteSource }: { board: Board; paletteS
   const [printerId, setPrinterId] = useState(PRINTERS[1]!.id);
   const [format, setFormat] = useState<ExportFormat>('bundle');
   const [busy, setBusy] = useState(false);
+  const [separateTiles, setSeparateTiles] = useState(true);
   const [outcome, setOutcome] = useState<SaveOutcome | null>(null);
 
   const printer = PRINTERS.find((p) => p.id === printerId) ?? PRINTERS[1]!;
@@ -56,6 +57,7 @@ export function ExportSection({ board, paletteSource }: { board: Board; paletteS
               seed,
               connectors,
               format,
+              separateTiles,
             }),
           ),
         );
@@ -119,6 +121,24 @@ export function ExportSection({ board, paletteSource }: { board: Board; paletteS
         </select>
 
         <p className="hint">{chosen.hint}</p>
+
+        {format === '3mf' && (
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={separateTiles}
+              onChange={(e) => setSeparateTiles(e.target.checked)}
+            />
+            <span>
+              One object per tile
+              <small>
+                {separateTiles
+                  ? 'Each tile can be moved and arranged on its own, for a set you mean to re-lay later.'
+                  : 'The whole board arrives as one piece, which keeps it together but fixed.'}
+              </small>
+            </span>
+          </label>
+        )}
 
         <button className="btn btn-primary" onClick={run} disabled={busy}>
           {busy ? 'Writing…' : `${isDesktop() ? 'Save' : 'Download'} ${chosen.label}`}

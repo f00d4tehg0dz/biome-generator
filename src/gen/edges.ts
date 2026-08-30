@@ -17,6 +17,7 @@
 import { hashUnit } from '../core/rng';
 import { edgeKey, DIRECTIONS, type Axial } from '../core/hex';
 import { BIOMES, type BiomeId } from './biomes';
+import { FULL_DETAIL, type Detail } from './detail';
 
 export const EDGE_TYPES = ['land', 'water', 'shore', 'path'] as const;
 export type EdgeType = (typeof EDGE_TYPES)[number];
@@ -75,6 +76,7 @@ export function edgeTypeAt(
   biome: BiomeId,
   direction: number,
   neighbourBiome: BiomeId | null,
+  detail: Detail = FULL_DETAIL,
 ): EdgeType {
   const d = DIRECTIONS[((direction % 6) + 6) % 6]!;
   const other: Axial = { q: coord.q + d.q, r: coord.r + d.r };
@@ -83,14 +85,31 @@ export function edgeTypeAt(
   if (neighbourBiome === null) {
     const weights = BIOME_EDGES[biome];
     const available = EDGE_TYPES.filter((type) => (weights[type] ?? 0) > 0);
-    return pickWeighted(available, (type) => weights[type] ?? 0, roll);
+    return pickWeighted(available, (type) => scaled(type, weights[type] ?? 0, detail), roll);
   }
 
   const available = allowedBetween(biome, neighbourBiome);
   const left = BIOME_EDGES[biome];
   const right = BIOME_EDGES[neighbourBiome];
   // Both sides weigh in, so a coast beside a meadow leans the way both can live with.
-  return pickWeighted(available, (type) => (left[type] ?? 0) + (right[type] ?? 0), roll);
+  return pickWeighted(
+    available,
+    (type) => scaled(type, (left[type] ?? 0) + (right[type] ?? 0), detail),
+    roll,
+  );
+}
+
+/**
+ * The user's appetite for a given kind of seam, applied to the biome's own weight.
+ *
+ * Safe to do on either side of a seam because the detail is a property of the board, not of
+ * a tile: both neighbours scale the same weights by the same factor and still agree. Land
+ * is never scaled, so a board with everything turned down is all-land rather than empty.
+ */
+function scaled(type: EdgeType, weight: number, detail: Detail): number {
+  if (type === 'path') return weight * detail.paths;
+  if (type === 'water' || type === 'shore') return weight * detail.water;
+  return weight;
 }
 
 /** All six edge types for a tile, given whatever neighbours currently exist. */
@@ -99,9 +118,10 @@ export function resolveEdges(
   coord: Axial,
   biome: BiomeId,
   neighbourAt: (direction: number) => BiomeId | null,
+  detail: Detail = FULL_DETAIL,
 ): EdgeType[] {
   return [0, 1, 2, 3, 4, 5].map((direction) =>
-    edgeTypeAt(seed, coord, biome, direction, neighbourAt(direction)),
+    edgeTypeAt(seed, coord, biome, direction, neighbourAt(direction), detail),
   );
 }
 

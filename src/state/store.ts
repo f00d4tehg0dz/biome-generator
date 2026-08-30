@@ -10,6 +10,7 @@ import {
   type BoardPlan,
   type BoardPreset,
 } from '../gen/board';
+import { clampDetail, FULL_DETAIL, type Detail } from '../gen/detail';
 import type { ConnectorKind } from '../kit/connectors';
 import type { ColourCount } from '../palette/reduce';
 
@@ -40,6 +41,7 @@ interface Snapshot {
   seed: string;
   biome: BiomeId;
   plan: BoardPlan;
+  detail: Detail;
 }
 
 /** Deep enough for a session's fiddling, short enough to stay honest about memory. */
@@ -59,6 +61,7 @@ interface AppState extends Snapshot {
 
   setSeed(seed: string): void;
   setBiome(biome: BiomeId): void;
+  setDetail(part: Partial<Detail>): void;
   setColourCount(count: ColourCount): void;
   setR(R: number): void;
   setView(view: View): void;
@@ -86,6 +89,7 @@ const DEFAULTS = {
   tab: 'design' as Tab,
   connectors: 'dovetail' as ConnectorKind,
   plan: singleTile(INITIAL_BIOME),
+  detail: FULL_DETAIL,
   selected: null as string | null,
   past: [] as Snapshot[],
   future: [] as Snapshot[],
@@ -104,6 +108,10 @@ export const useApp = create<AppState>((set, get) => ({
 
   // A re-roll rebuilds every tile on the board, so it is an edit like any other.
   reroll: () => set((state) => ({ ...commit(state), seed: randomSeed() })),
+
+  // So does turning the props off, which is why it goes through the history too.
+  setDetail: (part) =>
+    set((state) => ({ ...commit(state), detail: clampDetail({ ...state.detail, ...part }) })),
 
   // Changing the biome retints the selected tile, or the whole board when nothing is picked.
   setBiome: (biome) =>
@@ -169,7 +177,7 @@ export const useApp = create<AppState>((set, get) => ({
 }));
 
 function snapshot(state: AppState): Snapshot {
-  return { seed: state.seed, biome: state.biome, plan: state.plan };
+  return { seed: state.seed, biome: state.biome, plan: state.plan, detail: state.detail };
 }
 
 /** The history half of an edit: remember where we were, and drop any redo branch. */
@@ -197,6 +205,11 @@ function fromUrl(): Partial<AppState> {
   const view = params.get('view');
   const board = params.get('board');
   const connectors = params.get('connectors');
+  const detail = clampDetail({
+    props: number(params.get('props')),
+    paths: number(params.get('paths')),
+    water: number(params.get('water')),
+  });
   const chosen =
     biome && (BIOME_IDS as readonly string[]).includes(biome) ? (biome as BiomeId) : null;
 
@@ -210,7 +223,15 @@ function fromUrl(): Partial<AppState> {
       ? { connectors: connectors as ConnectorKind }
       : {}),
     ...(board ? { plan: decodeBoard(board) ?? singleTile(chosen ?? INITIAL_BIOME) } : {}),
+    detail,
   };
+}
+
+/** A parameter that is absent stays at the biome's own figure, rather than becoming zero. */
+function number(raw: string | null): number | undefined {
+  if (raw === null) return undefined;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : undefined;
 }
 
 const STORAGE_KEY = 'biome-generator/board';
@@ -231,7 +252,7 @@ function restore(): Partial<AppState> {
     const saved = window.localStorage.getItem(STORAGE_KEY);
     const parsed = saved ? (JSON.parse(saved) as Partial<Shared>) : null;
     if (!parsed?.plan || Object.keys(parsed.plan).length === 0) return {};
-    return { ...parsed, R: clampR(parsed.R ?? DEFAULT_R) };
+    return { ...parsed, R: clampR(parsed.R ?? DEFAULT_R), detail: clampDetail(parsed.detail) };
   } catch {
     // A stale or hand-edited entry is not worth failing to start over.
     return {};
@@ -241,7 +262,7 @@ function restore(): Partial<AppState> {
 /** The state a link and a saved session both carry: the board, and how it gets printed. */
 export type Shared = Pick<
   AppState,
-  'seed' | 'biome' | 'colourCount' | 'connectors' | 'R' | 'plan'
+  'seed' | 'biome' | 'colourCount' | 'connectors' | 'R' | 'plan' | 'detail'
 >;
 
 /** Keeps the address bar in step with the board, so a link always reproduces what is shown. */
@@ -252,8 +273,11 @@ export function boardUrl(state: Shared): string {
     connectors: state.connectors,
     board: encodeBoard(state.plan),
   });
-  // Only when it differs, so the common link stays short enough to read.
+  // Only when they differ, so the common link stays short enough to read.
   if (state.R !== DEFAULT_R) params.set('r', String(state.R));
+  if (state.detail.props !== 1) params.set('props', String(state.detail.props));
+  if (state.detail.paths !== 1) params.set('paths', String(state.detail.paths));
+  if (state.detail.water !== 1) params.set('water', String(state.detail.water));
   return `?${params.toString()}`;
 }
 

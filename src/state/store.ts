@@ -42,6 +42,14 @@ interface Snapshot {
   biome: BiomeId;
   plan: BoardPlan;
   detail: Detail;
+  /**
+   * Hex keys the user has asked for a cave on.
+   *
+   * Scatter decides what stands on a tile and decides it well, but "put a cave here" is not
+   * a preference about density, it is an instruction about one tile. Kept beside the plan
+   * rather than inside it because a cave is not a biome: the tile keeps whatever it was.
+   */
+  caves: string[];
 }
 
 /** Deep enough for a session's fiddling, short enough to stay honest about memory. */
@@ -62,6 +70,7 @@ interface AppState extends Snapshot {
   setSeed(seed: string): void;
   setBiome(biome: BiomeId): void;
   setDetail(part: Partial<Detail>): void;
+  toggleCave(coord: Axial): void;
   setColourCount(count: ColourCount): void;
   setR(R: number): void;
   setView(view: View): void;
@@ -90,6 +99,7 @@ const DEFAULTS = {
   connectors: 'dovetail' as ConnectorKind,
   plan: singleTile(INITIAL_BIOME),
   detail: FULL_DETAIL,
+  caves: [] as string[],
   selected: null as string | null,
   past: [] as Snapshot[],
   future: [] as Snapshot[],
@@ -124,6 +134,16 @@ export const useApp = create<AppState>((set, get) => ({
           : Object.fromEntries(Object.keys(state.plan).map((key) => [key, biome])),
     })),
 
+  toggleCave: (coord) =>
+    set((state) => {
+      const key = hexKey(coord);
+      const has = state.caves.includes(key);
+      return {
+        ...commit(state),
+        caves: has ? state.caves.filter((k) => k !== key) : [...state.caves, key],
+      };
+    }),
+
   place: (coord) =>
     set((state) => ({
       ...commit(state),
@@ -135,7 +155,13 @@ export const useApp = create<AppState>((set, get) => ({
     set((state) => {
       const plan = { ...state.plan };
       delete plan[hexKey(coord)];
-      return { ...commit(state), plan, selected: null };
+      return {
+        ...commit(state),
+        plan,
+        // A cave left on an empty cell would come back with the next tile placed there.
+        caves: state.caves.filter((key) => key !== hexKey(coord)),
+        selected: null,
+      };
     }),
 
   select: (coord) => {
@@ -177,7 +203,13 @@ export const useApp = create<AppState>((set, get) => ({
 }));
 
 function snapshot(state: AppState): Snapshot {
-  return { seed: state.seed, biome: state.biome, plan: state.plan, detail: state.detail };
+  return {
+    seed: state.seed,
+    biome: state.biome,
+    plan: state.plan,
+    detail: state.detail,
+    caves: state.caves,
+  };
 }
 
 /** The history half of an edit: remember where we were, and drop any redo branch. */
@@ -204,6 +236,7 @@ function fromUrl(): Partial<AppState> {
   const R = Number(params.get('r'));
   const view = params.get('view');
   const board = params.get('board');
+  const caves = params.get('caves');
   const connectors = params.get('connectors');
   const detail = clampDetail({
     props: number(params.get('props')),
@@ -223,6 +256,7 @@ function fromUrl(): Partial<AppState> {
       ? { connectors: connectors as ConnectorKind }
       : {}),
     ...(board ? { plan: decodeBoard(board) ?? singleTile(chosen ?? INITIAL_BIOME) } : {}),
+    ...(caves ? { caves: caves.split(' ').filter(Boolean) } : {}),
     detail,
   };
 }
@@ -252,7 +286,12 @@ function restore(): Partial<AppState> {
     const saved = window.localStorage.getItem(STORAGE_KEY);
     const parsed = saved ? (JSON.parse(saved) as Partial<Shared>) : null;
     if (!parsed?.plan || Object.keys(parsed.plan).length === 0) return {};
-    return { ...parsed, R: clampR(parsed.R ?? DEFAULT_R), detail: clampDetail(parsed.detail) };
+    return {
+      ...parsed,
+      R: clampR(parsed.R ?? DEFAULT_R),
+      detail: clampDetail(parsed.detail),
+      caves: parsed.caves ?? [],
+    };
   } catch {
     // A stale or hand-edited entry is not worth failing to start over.
     return {};
@@ -262,7 +301,7 @@ function restore(): Partial<AppState> {
 /** The state a link and a saved session both carry: the board, and how it gets printed. */
 export type Shared = Pick<
   AppState,
-  'seed' | 'biome' | 'colourCount' | 'connectors' | 'R' | 'plan' | 'detail'
+  'seed' | 'biome' | 'colourCount' | 'connectors' | 'R' | 'plan' | 'detail' | 'caves'
 >;
 
 /** Keeps the address bar in step with the board, so a link always reproduces what is shown. */
@@ -278,6 +317,7 @@ export function boardUrl(state: Shared): string {
   if (state.detail.props !== 1) params.set('props', String(state.detail.props));
   if (state.detail.paths !== 1) params.set('paths', String(state.detail.paths));
   if (state.detail.water !== 1) params.set('water', String(state.detail.water));
+  if (state.caves.length > 0) params.set('caves', state.caves.join(' '));
   return `?${params.toString()}`;
 }
 

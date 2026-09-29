@@ -23,14 +23,15 @@ function hasWebGL(): boolean {
 }
 
 export function App() {
-  const { seed, biome, colourCount, R, view, tab, connectors, plan, detail, selected } = useApp();
+  const { seed, biome, colourCount, R, view, tab, connectors, plan, detail, caves, selected } =
+    useApp();
   const { select, place, setView, setTab } = useApp();
   const webgl = useMemo(hasWebGL, []);
   useShortcuts();
 
   const board = useMemo(
-    () => generateBoard({ seed, R, connectors, plan, detail }),
-    [seed, R, connectors, plan, detail],
+    () => generateBoard({ seed, R, connectors, plan, detail, caves }),
+    [seed, R, connectors, plan, detail, caves],
   );
 
   // One palette for the board. You print with four filaments, not four per tile, but each
@@ -64,10 +65,10 @@ export function App() {
   // Keep the address bar in step, so the link in the bar always reproduces what is shown,
   // and keep the same state where the next session can find it.
   useEffect(() => {
-    const shared = { seed, biome, colourCount, connectors, R, plan, detail };
+    const shared = { seed, biome, colourCount, connectors, R, plan, detail, caves };
     window.history.replaceState(null, '', boardUrl(shared));
     saveSession(shared);
-  }, [seed, biome, colourCount, connectors, R, plan, detail]);
+  }, [seed, biome, colourCount, connectors, R, plan, detail, caves]);
 
   return (
     <div className="app">

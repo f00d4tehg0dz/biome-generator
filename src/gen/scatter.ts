@@ -13,8 +13,8 @@
 
 import type { Rng } from '../core/rng';
 import { hexContains, hexInset, type Vec2 } from '../core/hex';
-import { propMinFeature, propRadius, type PropId } from '../kit';
-import { MIN_FEATURE } from '../kit/solid';
+import { propMinFeature, propRadius, propRod, type PropId } from '../kit';
+import { MIN_DURABLE, MIN_FEATURE } from '../kit/solid';
 import type { Zone } from './surface';
 import { nearestBoundaryPoint, Surface } from './surface';
 import type { PathRoute } from './paths';
@@ -54,6 +54,23 @@ const PROP_ZONES: Partial<Record<PropId, Zone[]>> = {
   rockCluster: ['land', 'shore', 'cliff'],
   cairn: ['land', 'cliff'],
   mushroom: ['land'],
+  // Underground. Stalagmites grow out of a wet floor, so they are the one prop here that
+  // belongs at the water's edge as much as away from it.
+  stalagmite: ['land', 'shore'],
+  crystal: ['land', 'shore', 'cliff'],
+  pillar: ['land'],
+  brokenPillar: ['land', 'cliff'],
+  brazier: ['land'],
+  crate: ['land'],
+  archway: ['land'],
+  dungeonWall: ['land'],
+  sarcophagus: ['land'],
+  masonry: ['land'],
+  // A cave mouth opens out of ground that could plausibly be a hillside, which includes
+  // the cut face of a terrace.
+  caveMouth: ['land', 'cliff'],
+  caveEntrance: ['land', 'cliff'],
+  caveCrack: ['land', 'cliff', 'shore'],
   log: ['land'],
 };
 
@@ -63,13 +80,21 @@ const DEFAULT_ZONES: Zone[] = ['land'];
 const ROADSIDE: PropId[] = ['bench', 'lamp', 'signpost'];
 
 /** Trees spawn satellites; these are the ids that count as one. */
-const CLUSTERING: PropId[] = ['conifer', 'blossom', 'roundCrown', 'palm', 'bare', 'boulder'];
+const CLUSTERING: PropId[] = ['conifer', 'blossom', 'roundCrown', 'palm', 'bare', 'boulder', 'stalagmite'];
 
 /**
  * At most one per tile. A stand of conifers reads as a forest; three barns reads as a bug,
  * and a second jetty steals the first one's job.
  */
 const SINGLETON: PropId[] = [
+  // One doorway per tile. Two reads as a corridor that changes its mind.
+  'archway',
+  'brazier',
+  'sarcophagus',
+  // A hillside has one way in. Two mouths side by side read as a mistake, and the big one
+  // is a landmark: the tile is about it.
+  'caveMouth',
+  'caveEntrance',
   'barn',
   'cabin',
   'hut',
@@ -100,7 +125,23 @@ export function scatter(rng: Rng, spec: ScatterSpec, surface: Surface, path: Pat
 
   const used = new Set<PropId>();
 
-  const add = (id: PropId, at: Vec2, scale: number): boolean => {
+  /**
+   * `ceiling` is the largest the caller is willing to see this prop at, and it is what makes
+   * the durability rule below safe to apply. Scaling is uniform, so a prop shrunk to 0.6
+   * has every member at 0.6, and the member that matters is the thinnest rod: at the default
+   * range's low end of 0.85 a pillar's shaft, a fence post and a bare tree's branch all land
+   * under MIN_DURABLE. The feature-size cull does not catch it, because a bounding box
+   * measures the crown and not the branch holding it.
+   *
+   * Rather than drop those props, the scale comes back up to the smallest that survives
+   * handling. Only when even that is larger than the caller asked for is the prop wrong for
+   * the job and skipped, which is what happens to a satellite that would have to be nearly
+   * the size of its parent.
+   */
+  const add = (id: PropId, at: Vec2, requested: number, ceiling = requested): boolean => {
+    const scale = Math.max(requested, MIN_DURABLE / propRod(id));
+    if (scale > ceiling + 1e-9) return false;
+
     const reach = propRadius(id) * scale;
     const zone = surface.zoneAt(at);
     if (!zonesFor(id).includes(zone)) return false;
@@ -135,7 +176,7 @@ export function scatter(rng: Rng, spec: ScatterSpec, surface: Surface, path: Pat
       const angle = rng.range(0, Math.PI * 2);
       const distance = surface.R * rng.range(0.4, 0.6);
       const at: Vec2 = [Math.cos(angle) * distance, Math.sin(angle) * distance];
-      if (add(id, at, rng.range(1.15, 1.35))) break;
+      if (add(id, at, rng.range(1.15, 1.35), 1.35)) break;
     }
   }
 
@@ -153,7 +194,7 @@ export function scatter(rng: Rng, spec: ScatterSpec, surface: Surface, path: Pat
 
     const choice = rng.weighted(candidates, (w) => w.weight);
     const [low, high] = choice.scale ?? [0.85, 1.15];
-    if (!add(choice.id, at, rng.range(low, high))) continue;
+    if (!add(choice.id, at, rng.range(low, high), high)) continue;
 
     // Satellites: smaller siblings just clear of the parent. This is what makes trees read
     // as a stand rather than a grid.
@@ -171,6 +212,7 @@ export function scatter(rng: Rng, spec: ScatterSpec, surface: Surface, path: Pat
           choice.id,
           [at[0] + Math.cos(angle) * distance, at[1] + Math.sin(angle) * distance],
           satelliteScale,
+          0.72,
         );
       }
     }

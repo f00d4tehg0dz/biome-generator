@@ -370,7 +370,429 @@ export const crystal: PropDef = {
   },
 };
 
+/**
+ * A barrel standing on end.
+ *
+ * The belly is what makes it a barrel rather than a post, and it is the one part of it that
+ * widens going up, so it is kept shallow: under a millimetre of swell over half the height.
+ * The hoops stand proud of the staves on a chamfer rather than a step, because a ring with a
+ * flat underside is a ledge all the way round.
+ */
+export const barrel: PropDef = {
+  id: 'barrel',
+  footprint: 3.6,
+  height: 8,
+  budget: 280,
+  build(ctx) {
+    const rng = ctx.rng;
+    const frame = baseFrame(ctx);
+    const height = rng.range(6.5, 8);
+    const end = rng.range(2.5, 2.8);
+    const belly = end + rng.range(0.45, 0.6);
+    const phase = rng.range(0, Math.PI / 5);
+    const parts = new Parts();
+
+    const radiusAt = (z: number) => end + (belly - end) * (1 - Math.abs(z / (height / 2) - 1));
+
+    // The top is dished by a third of a millimetre inside a rim, which is the whole difference
+    // between a barrel and a drum at this size.
+    lathe(parts.part('prop.barrel.staves', 'wood'), frame, {
+      profile: [
+        { r: end, z: 0 },
+        { r: belly, z: height / 2 },
+        { r: end, z: height },
+        { r: end - 0.6, z: height },
+        { r: end - 0.6, z: height - 0.3 },
+      ],
+      sides: 10,
+      phase,
+    });
+
+    const HOOP = 1.3;
+    [height * 0.14, height * 0.86 - HOOP].forEach((z, i) => {
+      const r = Math.max(radiusAt(z), radiusAt(z + HOOP));
+      lathe(parts.part(`prop.barrel.hoop.${i}`, 'stone'), frame, {
+        profile: [
+          // Starts inside the staves and chamfers out: 0.65 over 0.8 is inside MAX_FLARE.
+          { r: r - 0.35, z },
+          { r: r + 0.3, z: z + 0.8 },
+          { r: r + 0.3, z: z + HOOP },
+          { r: r - 0.35, z: z + HOOP },
+        ],
+        sides: 10,
+        phase,
+      });
+    });
+
+    return parts.build();
+  },
+};
+
+/**
+ * A strongbox. The pack's chest has a rounded lid, and a rounded lid is a half-cylinder lying
+ * on its side, which is overhang from the equator down. A hipped lid says the same thing and
+ * only ever narrows going up.
+ */
+export const chest: PropDef = {
+  id: 'chest',
+  footprint: 5.7,
+  height: 7,
+  budget: 72,
+  build(ctx) {
+    const rng = ctx.rng;
+    const frame = baseFrame(ctx);
+    const length = rng.range(7, 8.5);
+    const depth = rng.range(5, 5.8);
+    const body = rng.range(3.4, 4);
+    const parts = new Parts();
+
+    beam(parts.part('prop.chest.body', 'wood'), frame, {
+      from: [0, 0, 0],
+      to: [0, 0, body],
+      width: length,
+      height: depth,
+    });
+
+    // Proud by a third of a millimetre, the same short cantilever the crate lid gets away with.
+    beam(parts.part('prop.chest.rim', 'wood'), frame, {
+      from: [0, 0, body - 0.6],
+      to: [0, 0, body + 0.6],
+      width: length + 0.7,
+      height: depth + 0.7,
+    });
+
+    beam(parts.part('prop.chest.lid', 'wood'), frame, {
+      from: [0, 0, body + 0.3],
+      to: [0, 0, body + rng.range(1.8, 2.4)],
+      width: length + 0.4,
+      height: depth + 0.4,
+      taper: 0.55,
+    });
+
+    // The lock plate is gold, so on a four-filament print the chest carries one warm spot the
+    // way the brazier does. Half of it is buried in the front face, which is what holds it on.
+    beam(parts.part('prop.chest.lock', 'blossom'), frame, {
+      from: [0, -depth / 2 - 0.1, body - 2.1],
+      to: [0, -depth / 2 - 0.1, body + 0.5],
+      width: 2.4,
+      height: 1.4,
+    });
+
+    return parts.build();
+  },
+};
+
+/**
+ * A heap of coin with a couple of stacks leaning on it. All one colour, so it has to read by
+ * shape: the stacks are the only straight-sided thing in it, and they are what says "coin"
+ * rather than "sand".
+ */
+export const hoard: PropDef = {
+  id: 'hoard',
+  footprint: 4.7,
+  height: 4,
+  budget: 140,
+  build(ctx) {
+    const rng = ctx.rng;
+    const frame = baseFrame(ctx);
+    const radius = rng.range(3.4, 4.2);
+    const height = rng.range(2.4, 3.2);
+    const parts = new Parts();
+
+    lathe(parts.part('prop.hoard.heap', 'blossom'), frame, {
+      profile: [
+        { r: radius, z: 0 },
+        { r: radius * 0.8, z: 0.9 },
+        { r: radius * 0.45, z: height * 0.75 },
+        { r: 0, z: height },
+      ],
+      sides: 9,
+      phase: rng.range(0, Math.PI),
+      wobble: coherentWobble(rng, 9, 0.12),
+    });
+
+    const start = rng.range(0, Math.PI * 2);
+    for (let i = 0; i < 2; i++) {
+      const angle = start + i * rng.range(1.8, 2.6);
+      const distance = radius * 0.7;
+      // 1.4 across an octagon is 2.6 mm flat to flat, clear of MIN_DURABLE.
+      lathe(parts.part(`prop.hoard.stack.${i}`, 'blossom'), frame.translate(Math.cos(angle) * distance, Math.sin(angle) * distance, 0), {
+        profile: [
+          { r: 1.4, z: 0 },
+          { r: 1.4, z: rng.range(2.2, 3.6) },
+        ],
+        sides: 8,
+        phase: rng.range(0, Math.PI / 4),
+      });
+    }
+
+    return parts.build();
+  },
+};
+
+/**
+ * A skull and the bones that went with it.
+ *
+ * At true scale a skull on a dungeon tile is under three millimetres and a femur is a hair,
+ * so both are drawn at the size they need to be to survive being picked up. The bones lie
+ * flat, which is the only way a thing that long and thin prints and stays on: held along its
+ * whole length rather than standing on one end.
+ */
+export const bones: PropDef = {
+  id: 'bones',
+  footprint: 6,
+  height: 4,
+  budget: 216,
+  build(ctx) {
+    const rng = ctx.rng;
+    const frame = baseFrame(ctx);
+    const parts = new Parts();
+
+    const skullAngle = rng.range(0, Math.PI * 2);
+    lathe(
+      parts.part('prop.bones.skull', 'path'),
+      frame.translate(Math.cos(skullAngle) * 2.4, Math.sin(skullAngle) * 2.4, 0),
+      {
+        profile: [
+          { r: 1.9, z: 0 },
+          { r: 2.05, z: 1.3 },
+          { r: 1.7, z: 2.6 },
+          { r: 0.9, z: 3.3 },
+        ],
+        sides: 7,
+        phase: rng.range(0, Math.PI),
+      },
+    );
+
+    const count = rng.int(2, 3);
+    for (let i = 0; i < count; i++) {
+      const angle = skullAngle + Math.PI * 0.6 + i * rng.range(0.7, 1.1);
+      const length = rng.range(5.5, 7);
+      const cx = Math.cos(angle + Math.PI / 2) * (i - (count - 1) / 2) * 1.2;
+      const cy = Math.sin(angle + Math.PI / 2) * (i - (count - 1) / 2) * 1.2;
+      const dx = (Math.cos(angle) * length) / 2;
+      const dy = (Math.sin(angle) * length) / 2;
+
+      beam(parts.part(`prop.bones.shaft.${i}`, 'path'), frame, {
+        from: [cx - dx, cy - dy, 1.2],
+        to: [cx + dx, cy + dy, 1.2],
+        width: 2.4,
+        height: 2.4,
+      });
+
+      // Knuckles at each end, stood upright so they print as short blocks rather than as a
+      // cross-grain overhang off the shaft.
+      for (const [end, sign] of [
+        ['a', -1],
+        ['b', 1],
+      ] as const) {
+        beam(parts.part(`prop.bones.knuckle.${i}.${end}`, 'path'), frame, {
+          from: [cx + sign * dx, cy + sign * dy, 0],
+          to: [cx + sign * dx, cy + sign * dy, 2.8],
+          width: 3.2,
+          height: 3.2,
+          roll: angle,
+        });
+      }
+    }
+
+    return parts.build();
+  },
+};
+
+/**
+ * A plate of floor spikes. Each spike is a four-sided cone rather than a round one: the pack's
+ * are square-section, and a pyramid narrows on every face, so it is self-supporting by shape.
+ */
+export const spikeTrap: PropDef = {
+  id: 'spikeTrap',
+  footprint: 7.5,
+  height: 6,
+  budget: 96,
+  build(ctx) {
+    const rng = ctx.rng;
+    const frame = baseFrame(ctx);
+    const side = rng.range(9, 10.5);
+    const pitch = side / 3;
+    const parts = new Parts();
+
+    beam(parts.part('prop.spikeTrap.plate', 'rock'), frame, {
+      from: [0, 0, 0],
+      to: [0, 0, 1.2],
+      width: side,
+      height: side,
+    });
+
+    // Nine spikes that never touch each other can share one builder; they all stand in the
+    // plate, which is the one they must not share with.
+    const spikes = parts.part('prop.spikeTrap.spikes', 'stone');
+    for (let i = -1; i <= 1; i++) {
+      for (let j = -1; j <= 1; j++) {
+        lathe(spikes, frame.translate(i * pitch, j * pitch, 0), {
+          profile: [
+            // 1.75 on a square is 2.5 mm across the flats at the foot.
+            { r: 1.75, z: 0.6 },
+            { r: 0, z: 0.6 + rng.range(3.2, 4.4) },
+          ],
+          sides: 4,
+          phase: Math.PI / 4,
+        });
+      }
+    }
+
+    return parts.build();
+  },
+};
+
+/**
+ * A short flight up to a landing. Each step is its own block running all the way back to the
+ * top, so they overlap rather than meet, and every one of them stands on the floor.
+ */
+export const stairs: PropDef = {
+  id: 'stairs',
+  footprint: 7,
+  height: 11,
+  budget: 64,
+  build(ctx) {
+    const rng = ctx.rng;
+    const frame = baseFrame(ctx);
+    const steps = rng.int(3, 4);
+    const rise = rng.range(2.2, 2.6);
+    const tread = rng.range(2.4, 2.8);
+    const width = rng.range(7, 8.5);
+    const depth = steps * tread;
+    const parts = new Parts();
+
+    for (let i = 0; i < steps; i++) {
+      const front = -depth / 2 + i * tread;
+      beam(parts.part(`prop.stairs.step.${i}`, 'stone'), frame, {
+        from: [0, (front + depth / 2) / 2, 0],
+        to: [0, (front + depth / 2) / 2, (i + 1) * rise],
+        width,
+        height: depth / 2 - front,
+      });
+    }
+
+    return parts.build();
+  },
+};
+
+/**
+ * Bars between two posts, the pack's cell door stood on its own.
+ *
+ * Two bars, not five. A bar has to be 2.3 mm to survive, and it needs daylight either side
+ * of it to read as a bar rather than a wall, so a gate this size holds two. The crossbar
+ * bridges from post to post through them, which is what makes it a grille and not a fence.
+ */
+export const portcullis: PropDef = {
+  id: 'portcullis',
+  footprint: 7.8,
+  height: 12,
+  budget: 100,
+  bridges: true,
+  build(ctx) {
+    const rng = ctx.rng;
+    const frame = baseFrame(ctx);
+    const height = rng.range(9, 11);
+    const post = 2.8;
+    const bar = 2.3;
+    const gap = rng.range(8.8, 9.6);
+    const span = gap + post;
+    const parts = new Parts();
+
+    const posts = parts.part('prop.portcullis.posts', 'stone');
+    for (const x of [-span / 2, span / 2]) {
+      beam(posts, frame, { from: [x, 0, 0], to: [x, 0, height], width: post, height: post });
+    }
+
+    beam(parts.part('prop.portcullis.lintel', 'stone'), frame, {
+      from: [-span / 2 - post / 2, 0, height + 0.9],
+      to: [span / 2 + post / 2, 0, height + 0.9],
+      width: post,
+      height: 2.6,
+    });
+
+    const bars = parts.part('prop.portcullis.bars', 'rock');
+    for (const x of [-gap / 4, gap / 4]) {
+      beam(bars, frame, { from: [x, 0, 0], to: [x, 0, height + 0.3], width: bar, height: bar });
+    }
+
+    beam(parts.part('prop.portcullis.crossbar', 'rock'), frame, {
+      from: [-span / 2, 0, height * 0.5],
+      to: [span / 2, 0, height * 0.5],
+      width: bar,
+      height: bar,
+    });
+
+    return parts.build();
+  },
+};
+
+/**
+ * Candles in a pool of their own wax. The pool is what holds them: three free-standing
+ * sticks this thin are three levers, one lump with three sticks in it is a single part.
+ */
+export const candles: PropDef = {
+  id: 'candles',
+  footprint: 3.7,
+  height: 9,
+  budget: 240,
+  build(ctx) {
+    const rng = ctx.rng;
+    const frame = baseFrame(ctx);
+    const parts = new Parts();
+
+    lathe(parts.part('prop.candles.pool', 'path'), frame, {
+      profile: [
+        { r: 3.6, z: 0 },
+        { r: 3.3, z: 1.3 },
+      ],
+      sides: 9,
+      phase: rng.range(0, Math.PI),
+    });
+
+    const count = rng.int(2, 3);
+    const start = rng.range(0, Math.PI * 2);
+    for (let i = 0; i < count; i++) {
+      const angle = start + (i / count) * Math.PI * 2;
+      const distance = rng.range(1.4, 1.8);
+      const at = frame.translate(Math.cos(angle) * distance, Math.sin(angle) * distance, 0);
+      const height = rng.range(3.2, 6.5);
+
+      // Eight sides at 1.4 is 2.6 mm flat to flat; the section check reads it as 2.35 square,
+      // which is the margin that keeps the tallest candle legal under its own flame.
+      lathe(parts.part(`prop.candles.wax.${i}`, 'path'), at, {
+        profile: [
+          { r: 1.4, z: 0 },
+          { r: 1.4, z: height },
+        ],
+        sides: 8,
+      });
+
+      // Narrower than the wax at its foot, so the whole base ring is buried in the candle.
+      lathe(parts.part(`prop.candles.flame.${i}`, 'blossom'), at, {
+        profile: [
+          { r: 1.3, z: height - 0.4 },
+          { r: 1.1, z: height + 0.5 },
+          { r: 0, z: height + 2.0 },
+        ],
+        sides: 8,
+      });
+    }
+
+    return parts.build();
+  },
+};
+
 export const DUNGEON = {
+  barrel,
+  chest,
+  hoard,
+  bones,
+  spikeTrap,
+  stairs,
+  portcullis,
+  candles,
   pillar,
   brokenPillar,
   dungeonWall,

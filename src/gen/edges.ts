@@ -42,6 +42,10 @@ const BIOME_EDGES: Record<BiomeId, EdgeWeights> = {
   // A dungeon is corridors and the walls between them, so it presents a way through more
   // often than anything else does. `land` here is the wall: a seam with no door in it.
   dungeon: { land: 3, path: 9 },
+  crypt: { land: 4, path: 8 },
+  // Sealed more often than the rest, to match the fewer corridors it lets in.
+  vault: { land: 6, path: 6 },
+  prison: { land: 3, path: 9 },
 };
 
 /**

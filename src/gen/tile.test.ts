@@ -3,6 +3,9 @@
 import { describe, expect, it } from 'vitest';
 import { generateTile } from './tile';
 import { BIOME_IDS, BIOMES } from './biomes';
+
+/** Every biome that is a room: the walled-seam tests run against all of them. */
+const WALLED = BIOME_IDS.filter((id) => BIOMES[id].walled);
 import { checkSolid } from '../check/manifold';
 import {
   boundsOf,
@@ -96,8 +99,8 @@ describe('tile geometry', () => {
 
   it('keeps walls and doorways inside the tile, like everything else', () => {
     const edges: EdgeType[] = ['path', 'land', 'path', 'land', 'land', 'path'];
-    for (const seed of ['vault7', 'deep', 'abc']) {
-      const tile = generateTile({ seed, biome: 'dungeon', R, edges });
+    for (const biome of WALLED) for (const seed of ['vault7', 'deep', 'abc']) {
+      const tile = generateTile({ seed, biome, R, edges });
       // Walls, doorways and their fixtures only. The landform is held to the boundary by the
       // test above, and its clipped fills sit a hundredth of a millimetre proud of the ideal
       // hexagon, which is a rounding artefact rather than something a wall may copy.
@@ -107,11 +110,11 @@ describe('tile geometry', () => {
           s.name.startsWith('tile.door') ||
           s.name.startsWith('fixture.'),
       );
-      expect(added.length, `${seed}: no walls were built`).toBeGreaterThan(0);
+      expect(added.length, `${biome}/${seed}: no walls were built`).toBeGreaterThan(0);
       for (const p of cornersOf(added)) {
         expect(
           hexContains(p, R + 1e-6),
-          `${seed}: (${p[0].toFixed(1)}, ${p[1].toFixed(1)}) is outside the hex`,
+          `${biome}/${seed}: (${p[0].toFixed(1)}, ${p[1].toFixed(1)}) is outside the hex`,
         ).toBe(true);
       }
     }
@@ -127,12 +130,12 @@ describe('tile geometry', () => {
     // no corridor has no doorway to check. That is how the first gate shipped: its rail
     // bridged the bars and no test built one.
     const edges: EdgeType[] = ['path', 'land', 'path', 'land', 'land', 'path'];
-    for (const seed of ['vault7', 'deep', 'abc', 'p3']) {
-      const tile = generateTile({ seed, biome: 'dungeon', R, edges });
+    for (const biome of WALLED) for (const seed of ['vault7', 'deep', 'abc', 'p3']) {
+      const tile = generateTile({ seed, biome, R, edges });
       const exposed = overhangBySolid(tile.solids)
         .filter((entry) => !entry.name.startsWith('prop.'))
         .map((entry) => entry.name);
-      expect(exposed, `${seed}: tile geometry needing support`).toEqual([]);
+      expect(exposed, `${biome}/${seed}: tile geometry needing support`).toEqual([]);
     }
   });
 
@@ -140,15 +143,15 @@ describe('tile geometry', () => {
     // The seam decides, so both neighbours agree without consulting each other: a wall on
     // one side of a seam always has a wall facing it, and a doorway always has a doorway.
     const walls: EdgeType[] = ['path', 'land', 'path', 'land', 'land', 'path'];
-    for (const seed of ['vault7', 'deep', 'abc', 'p3']) {
-      const tile = generateTile({ seed, biome: 'dungeon', R, edges: walls });
+    for (const biome of WALLED) for (const seed of ['vault7', 'deep', 'abc', 'p3']) {
+      const tile = generateTile({ seed, biome, R, edges: walls });
       for (let direction = 0; direction < 6; direction++) {
         const named = (kind: string) =>
           tile.solids.some((s) => s.name.startsWith(`tile.${kind}.${direction}`));
         if (tile.edges[direction] === 'path') {
-          expect(named('door'), `${seed} dir ${direction}: corridor without a doorway`).toBe(true);
+          expect(named('door'), `${biome}/${seed} dir ${direction}: corridor without a doorway`).toBe(true);
         } else {
-          expect(named('wall'), `${seed} dir ${direction}: seam without a wall`).toBe(true);
+          expect(named('wall'), `${biome}/${seed} dir ${direction}: seam without a wall`).toBe(true);
         }
       }
     }

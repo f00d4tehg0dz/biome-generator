@@ -24,6 +24,9 @@ export const BIOME_IDS = [
   'tundra',
   'village',
   'dungeon',
+  'crypt',
+  'vault',
+  'prison',
 ] as const;
 
 export type BiomeId = (typeof BIOME_IDS)[number];
@@ -334,10 +337,115 @@ export const BIOMES: Record<BiomeId, Biome> = {
         { id: 'archway', weight: 2, scale: [0.95, 1.1] },
         // Dripstone, where the roof has been leaking for a few centuries.
         { id: 'stalagmite', weight: 1, scale: [0.7, 1] },
+        // Stores and the people who never left with them.
+        { id: 'barrel', weight: 3 },
+        { id: 'bones', weight: 2 },
+        // Pinned like the pillars. Scatter lifts a scale until the thinnest rod survives, but
+        // a candle is weakest in section under its flame, and 2.35 mm has no 0.85 to spare.
+        { id: 'candles', weight: 2, scale: [1, 1.15] },
+        { id: 'chest', weight: 1 },
+        { id: 'hoard', weight: 1 },
+        { id: 'spikeTrap', weight: 1 },
+        { id: 'stairs', weight: 1 },
+        { id: 'portcullis', weight: 1, scale: [0.95, 1.1] },
       ],
     },
   },
 
+  // The three below are the dungeon taken apart by what the room was for. They share its
+  // floor, its walls and its flat terrain, and differ in palette and in what stands on them:
+  // a room reads by its contents long before it reads by its stone.
+
+  crypt: {
+    id: 'crypt',
+    name: 'Crypt',
+    blurb: 'Tombs, bones and candles. Cold stone lit by the only warm thing left in it.',
+    // Blue-grey rather than the dungeon's warm grey, so a crypt beside a dungeon on the same
+    // board is a different room and not the same one twice. Bone takes the light slot.
+    palette: { S0: '#A9ADB0', S1: '#6F7378', S2: '#E0B25E', S3: '#E6DFCC' },
+    binding: bindingWith({ stone: 'S0', rock: 'S1', wood: 'S1', blossom: 'S2', path: 'S3' }),
+    ground: 'stone',
+    terrain: { relief: 0.04, roughness: 0.12 },
+    water: null,
+    walled: true,
+    path: 0.85,
+    scatter: {
+      density: 0.13,
+      hero: ['sarcophagus'],
+      weights: [
+        { id: 'sarcophagus', weight: 4 },
+        { id: 'bones', weight: 4 },
+        // Pinned for the same reason as in the dungeon: the wax is weakest under the flame.
+        { id: 'candles', weight: 4, scale: [1, 1.15] },
+        { id: 'brokenPillar', weight: 3, scale: [0.95, 1.2] },
+        { id: 'pillar', weight: 2, scale: [0.95, 1.15] },
+        { id: 'masonry', weight: 2 },
+        { id: 'archway', weight: 1, scale: [0.95, 1.1] },
+        { id: 'brazier', weight: 1 },
+      ],
+    },
+  },
+
+  vault: {
+    id: 'vault',
+    name: 'Treasure Vault',
+    blurb: 'Chests, coin and stores, and a trap on the floor for whoever came for them.',
+    // Sandstone and gold. The feature slot is the treasure itself, which is the only biome
+    // where the warm colour is the point of the room rather than the light in it.
+    palette: { S0: '#C8B89A', S1: '#8C6E4E', S2: '#E8B840', S3: '#E4D8BC' },
+    binding: bindingWith({ stone: 'S0', rock: 'S1', wood: 'S1', blossom: 'S2', path: 'S3' }),
+    ground: 'stone',
+    terrain: { relief: 0.04, roughness: 0.12 },
+    water: null,
+    walled: true,
+    // Fewer ways in than any other room: a vault with a corridor on every side is a hallway.
+    path: 0.8,
+    scatter: {
+      density: 0.14,
+      hero: ['chest'],
+      weights: [
+        { id: 'chest', weight: 4 },
+        { id: 'hoard', weight: 4 },
+        { id: 'crate', weight: 3 },
+        { id: 'barrel', weight: 3 },
+        { id: 'pillar', weight: 2, scale: [0.95, 1.15] },
+        { id: 'brazier', weight: 2 },
+        { id: 'spikeTrap', weight: 1 },
+        { id: 'candles', weight: 1, scale: [1, 1.15] },
+      ],
+    },
+  },
+
+  prison: {
+    id: 'prison',
+    name: 'Prison',
+    blurb: 'Cell bars, broken walls, bones in the corner and spikes in the floor.',
+    // The darkest of the four, with rust standing in for flame.
+    palette: { S0: '#9C9A94', S1: '#5E5A56', S2: '#C47A48', S3: '#D8D0C0' },
+    binding: bindingWith({ stone: 'S0', rock: 'S1', wood: 'S1', blossom: 'S2', path: 'S3' }),
+    ground: 'stone',
+    terrain: { relief: 0.04, roughness: 0.12 },
+    water: null,
+    walled: true,
+    path: 0.9,
+    scatter: {
+      // Higher than the other rooms because the gate is wide: at 0.13 one portcullis spent
+      // most of the budget and the cell stood empty around it.
+      density: 0.19,
+      hero: ['portcullis'],
+      weights: [
+        { id: 'portcullis', weight: 2, scale: [0.95, 1.1] },
+        { id: 'bones', weight: 3 },
+        { id: 'dungeonWall', weight: 3, scale: [0.95, 1.1] },
+        { id: 'masonry', weight: 3 },
+        { id: 'spikeTrap', weight: 2 },
+        { id: 'brazier', weight: 2 },
+        { id: 'stairs', weight: 1 },
+        { id: 'barrel', weight: 1 },
+        { id: 'crate', weight: 1 },
+      ],
+    },
+  },
 };
 
 export const BIOME_LIST: Biome[] = BIOME_IDS.map((id) => BIOMES[id]);
